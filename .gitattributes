@@ -1,0 +1,12 @@
+# 统一换行符，避免 Windows 开发 / Linux CI 之间出现无意义的整文件 diff
+* text=auto eol=lf
+
+# 二进制资源
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.mb binary
+*.ico binary
+
+# Maya ASCII 场景保持文本，但不做 CRLF 转换
+*.ma text

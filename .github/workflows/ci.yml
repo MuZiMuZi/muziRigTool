@@ -1,0 +1,36 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # 先做纯语法编译，排除低级 SyntaxError。
+      # Maya 相关模块不在 CI 中导入，运行时验证由 Maya 2023 手动完成。
+      - name: Compile all sources
+        run: python -m compileall -q .
+
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
