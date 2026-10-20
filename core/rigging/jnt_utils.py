@@ -12,8 +12,8 @@ u"""Joint 基础操作。
     Jnt(name)              引用一个已存在的关节，不创建、不修改场景
     Jnt.create_jnt(...)    显式创建关节，返回 Jnt
 
-    数值用属性写       jnt.radius = 0.5 / jnt.joint_orient = (10, 0, 0)
-    开关用方法         jnt.set_jnt_axis(True) / jnt.set_scale_compensate(False)
+    数值用属性写       jnt.radius = 0.5
+    其余用方法         jnt.set_joint_orient(...) / jnt.set_jnt_axis(...)
 
 构造与创建分开，是为了避免「拼错一个变量名就在场景里留一个垃圾节点」。
 """
@@ -173,7 +173,7 @@ class Jnt(object):
         )
 
     # ------------------------------------------------------------------
-    # 数值属性
+    # 数值读写
     # ------------------------------------------------------------------
 
     @property
@@ -186,24 +186,27 @@ class Jnt(object):
     def radius(self, value):
         cmds.setAttr(self.name + ".radius", value)
 
-    @property
-    def joint_orient(self):
-        u"""jointOrientXYZ。
-
-        读：jnt.joint_orient            -> (x, y, z)
-        写：jnt.joint_orient = (10,0,0)
-        清零：jnt.joint_orient = (0,0,0)
-        """
+    def get_joint_orient(self):
+        u"""返回 jointOrientXYZ。"""
 
         return cmds.getAttr(self.name + ".jointOrient")[0]
 
-    @joint_orient.setter
-    def joint_orient(self, values):
+    def set_joint_orient(self, values):
+        u"""设置 jointOrientXYZ。
+
+        jointOrient 是复合属性，三个分量可以一次写完。
+
+        Args:
+            values (tuple): 三个数值。
+
+        Raises:
+            ValueError: 不是三个数值。
+        """
+
         if values is None or len(values) != 3:
             raise ValueError(u"jointOrient 必须包含 3 个数值。")
 
-        for index, axis in enumerate(("X", "Y", "Z")):
-            cmds.setAttr("{}.jointOrient{}".format(self.name, axis), values[index])
+        cmds.setAttr(self.name + ".jointOrient", values[0], values[1], values[2])
 
     # ------------------------------------------------------------------
     # 布尔开关
