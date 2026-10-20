@@ -21,6 +21,8 @@ u"""Joint 基础操作。
 构造与创建分开，是为了避免「拼错一个变量名就在场景里留一个垃圾节点」。
 """
 
+import math
+
 import maya.cmds as cmds
 
 from ..common.name_utils import Name
@@ -305,13 +307,16 @@ class JntChain(object):
             raise TypeError(u"{} 不是 joint 节点。".format(root))
 
         self.root = Jnt(root)
-        self.joints = self._collect(root)
+        self._joints = self._collect(root)
 
     def __len__(self):
-        return len(self.joints)
+        return len(self._joints)
 
     def __repr__(self):
-        return "<JntChain {} joints, root={}>".format(len(self.joints), self.root.name)
+        return "<JntChain {} joints, root={}>".format(
+            len(self._joints),
+            self.root.name
+        )
 
     @staticmethod
     def _collect(root):
@@ -338,18 +343,85 @@ class JntChain(object):
             joints.append(Jnt(current))
 
     # ------------------------------------------------------------------
+    # 状态
+    # ------------------------------------------------------------------
+
+    @property
+    def joints(self):
+        u"""链上的关节，从根到叶。返回副本，修改它不会影响链本身。"""
+
+        return list(self._joints)
+
+    @property
+    def names(self):
+        u"""链上每个关节的名称，从根到叶。"""
+
+        return [jnt.name for jnt in self._joints]
+
+    # ------------------------------------------------------------------
     # 查询
     # ------------------------------------------------------------------
 
-    def get_joints(self):
-        u"""返回链上的关节，从根到叶。"""
+    def get_joint(self, name):
+        u"""按名称取链上的关节。
 
-        return list(self.joints)
+        Raises:
+            ValueError: 名称不在链上。
+        """
 
-    def get_names(self):
-        u"""返回链上每个关节的名称，从根到叶。"""
+        return self._joints[self.get_index(name)]
 
-        return [jnt.name for jnt in self.joints]
+    def get_index(self, name):
+        u"""返回关节在链上的位置，从 0 开始。
+
+        Raises:
+            ValueError: 名称不在链上。
+        """
+
+        for index, jnt in enumerate(self._joints):
+            if jnt.name == name:
+                return index
+
+        raise ValueError(u"{} 不在当前链上。".format(name))
+
+    def get_leaf(self):
+        u"""返回叶关节。"""
+
+        return self._joints[-1]
+
+    def get_middle(self):
+        u"""返回中间关节。
+
+        Raises:
+            RuntimeError: 链长度小于 3，没有中间关节。
+        """
+
+        if len(self._joints) < 3:
+            raise RuntimeError(u"链长度小于 3，没有中间关节。")
+
+        return self._joints[len(self._joints) // 2]
+
+    def get_length(self):
+        u"""返回整条链的长度。
+
+        逐节累加关节的 translate——对关节来说 translate 就是骨骼长度。
+        """
+
+        total = 0.0
+
+        for jnt in self._joints[1:]:
+            translate = cmds.getAttr(jnt.name + ".translate")[0]
+            total += math.dist((0.0, 0.0, 0.0), translate)
+
+        return total
+
+    def get_positions(self):
+        u"""返回链上每个关节的世界坐标。"""
+
+        return [
+            cmds.xform(jnt.name, query=True, worldSpace=True, translation=True)
+            for jnt in self._joints
+        ]
 
     # ------------------------------------------------------------------
     # 创建
@@ -425,7 +497,7 @@ class JntChain(object):
         """
 
         if before is None:
-            last = self.joints[-1]
+            last = self._joints[-1]
 
             if position is None:
                 position = cmds.xform(
@@ -436,13 +508,10 @@ class JntChain(object):
                 )
 
             jnt = Jnt.create_jnt(name, position=position, parent=last.name)
-            self.joints.append(jnt)
+            self._joints = self._collect(self.root.name)
             return jnt
 
-        names = self.get_names()
-
-        if before not in names:
-            raise ValueError(u"{} 不在当前链上。".format(before))
+        self.get_index(before)
 
         parent = cmds.listRelatives(before, parent=True)
         jnt = Jnt.create_jnt(
@@ -454,29 +523,29 @@ class JntChain(object):
         # 把 before 挂到新关节下，链才连续
         cmds.parent(before, jnt.name, absolute=True)
 
-        self.joints.insert(names.index(before), jnt)
+        self._joints = self._collect(self.root.name)
         return jnt
 
     def remove(self, name, keep_children=True):
         u"""删除链上的一个关节。
 
-        删除后子关节会重挂到上一级，链仍然连续（位置保持不变）。
+        删除后子关节会重挂到上一级，链仍然连续；根关节不允许删除。
 
         Args:
             name (str): 要删除的关节。
             keep_children (bool): 是否保留子关节。
 
         Raises:
-            ValueError: 关节不在当前链上。
+            ValueError: 关节不在链上，或试图删除根关节。
         """
 
-        names = self.get_names()
+        self.get_index(name)
 
-        if name not in names:
-            raise ValueError(u"{} 不在当前链上。".format(name))
+        if name == self.root.name:
+            raise ValueError(u"不能删除链的根关节，整条链请用 delete()。")
 
         Jnt(name).delete_jnt(keep_children=keep_children)
-        del self.joints[names.index(name)]
+        self._joints = self._collect(self.root.name)
 
     def rename(self, names):
         u"""按顺序重命名整条链。
@@ -490,27 +559,23 @@ class JntChain(object):
             ValueError: 数量不一致，或目标名称已被其他节点占用。
         """
 
-        if len(names) != len(self.joints):
+        if len(names) != len(self._joints):
             raise ValueError(
                 u"names 数量必须与链长度一致：{} != {}".format(
                     len(names),
-                    len(self.joints)
+                    len(self._joints)
                 )
             )
 
-        current_names = set(self.get_names())
+        current_names = set(self.names)
 
         for new_name in names:
             if cmds.objExists(new_name) and new_name not in current_names:
                 raise ValueError(u"名称已被占用：{}".format(new_name))
 
-        for jnt, new_name in zip(self.joints, names):
+        for jnt, new_name in zip(self._joints, names):
             cmds.rename(jnt.name, new_name)
             jnt.name = new_name
-
-    # ------------------------------------------------------------------
-    # 镜像
-    # ------------------------------------------------------------------
 
     def mirror(self, search=None, replace=None):
         u"""镜像整条链。
@@ -536,3 +601,57 @@ class JntChain(object):
         result = cmds.mirrorJoint(self.root.name, **kwargs)
 
         return JntChain(result[0])
+
+    # ------------------------------------------------------------------
+    # 批量设置
+    # ------------------------------------------------------------------
+
+    def rebuild_orient(self, primary_axis="xyz", secondary_axis="xup"):
+        u"""整链重算 jointOrient。
+
+        必须从叶到根倒序执行——关节朝向依赖子关节位置，
+        正序计算会让中间关节用到旧的子关节数据。
+        """
+
+        for jnt in reversed(self._joints):
+            jnt.rebuild_orient(primary_axis, secondary_axis)
+
+    def set_radius(self, radius):
+        u"""统一设置整条链的显示半径。"""
+
+        for jnt in self._joints:
+            jnt.radius = radius
+
+    def set_jnt_axis(self, axis_value):
+        u"""统一显示或隐藏整条链的 Local Rotation Axis。"""
+
+        for jnt in self._joints:
+            jnt.set_jnt_axis(axis_value)
+
+    def set_scale_compensate(self, enabled=True):
+        u"""统一设置整条链的 segmentScaleCompensate。"""
+
+        for jnt in self._joints:
+            jnt.set_scale_compensate(enabled)
+
+    def set_label(self):
+        u"""按各自名称给整条链打 Label。"""
+
+        for jnt in self._joints:
+            jnt.set_label()
+
+    # ------------------------------------------------------------------
+    # 删除
+    # ------------------------------------------------------------------
+
+    def delete(self, keep_children=False):
+        u"""删除整条链。
+
+        Args:
+            keep_children (bool): True 保留子关节并重挂，False 连子级一起删除。
+        """
+
+        self.root.delete_jnt(keep_children=keep_children)
+        self._joints = []
+
+
