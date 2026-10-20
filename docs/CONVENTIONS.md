@@ -144,6 +144,15 @@ guide_count
 
 ### 2.4 常量与配置
 
+**全部用小写 snake_case**，不区分「常量」和「变量」——除类名外，标识符一律小写。
+
+```python
+label_side = {"md": 0, "lf": 1, "rt": 2}
+side_list = ("lf", "rt", "md")
+index_min = 1
+index_max = 999
+```
+
 **优先放在使用它的类里，作为类属性。** 这样外部 import 一个类就能拿到全部配置和校验入口：
 
 ```python
@@ -158,13 +167,7 @@ Name.side_list
 Name.check_side("left")
 ```
 
-类属性用小写——类名已经提供了命名空间，`Name.side_list` 读作「Name 的合法方向列表」，不需要再靠大写强调。
-
-只有真正跨类共享、不属于任何具体类的常量，才放模块级并用大写：
-
-```python
-DEFAULT_AXIS = "X+"
-```
+类属性同样小写——类名已经提供了命名空间，`Name.side_list` 读作「Name 的合法方向列表」，不需要再靠大写强调。
 
 ### 2.5 私有
 
