@@ -478,7 +478,7 @@ class JntChain(object):
     # 编辑
     # ------------------------------------------------------------------
 
-    def insert(self, name, position=None, before=None):
+    def insert_jnt(self, name, position=None, before=None):
         u"""在链中插入一个关节。
 
         默认追加到链尾；指定 before 时插到该关节之前，并把 before 接到新关节下面，
@@ -526,7 +526,7 @@ class JntChain(object):
         self._joints = self._collect(self.root.name)
         return jnt
 
-    def remove(self, name, keep_children=True):
+    def remove_jnt(self, name, keep_children=True):
         u"""删除链上的一个关节。
 
         删除后子关节会重挂到上一级，链仍然连续；根关节不允许删除。
@@ -542,12 +542,12 @@ class JntChain(object):
         self.get_index(name)
 
         if name == self.root.name:
-            raise ValueError(u"不能删除链的根关节，整条链请用 delete()。")
+            raise ValueError(u"不能删除链的根关节，整条链请用 delete_chain()。")
 
         Jnt(name).delete_jnt(keep_children=keep_children)
         self._joints = self._collect(self.root.name)
 
-    def rename(self, names):
+    def rename_chain(self, names):
         u"""按顺序重命名整条链。
 
         名称由调用方生成（通常用 Name），这里只负责顺序和冲突检查。
@@ -577,7 +577,7 @@ class JntChain(object):
             cmds.rename(jnt.name, new_name)
             jnt.name = new_name
 
-    def mirror(self, search=None, replace=None):
+    def mirror_chain(self, search=None, replace=None):
         u"""镜像整条链。
 
         使用 Maya 的 mirrorJoint，jointOrient 会一并镜像。
@@ -644,7 +644,7 @@ class JntChain(object):
     # 删除
     # ------------------------------------------------------------------
 
-    def delete(self, keep_children=False):
+    def delete_chain(self, keep_children=False):
         u"""删除整条链。
 
         Args:
