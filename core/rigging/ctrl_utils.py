@@ -235,18 +235,32 @@ class Ctrl(object):
                 for index in range(0, len(points), 3)
             ]
 
-            curve = cmds.curve(
-                point=xyz,
-                degree=entry.get("degree", 3)
-            )
+            form = entry.get("form", 0)
 
-            # 周期曲线（圆环、方形等闭合形状）不能用 cmds.curve 的 knot 参数直接创建，
-            # Maya 会报「控制点太少」。先建开放曲线，再用 closeCurve 转成周期曲线。
-            if entry.get("periodic"):
+            kwargs = {
+                "point": xyz,
+                "degree": entry.get("degree", 3),
+            }
+
+            # knots 是曲线能精确重建的关键：形状库里的 CV 末尾带着重复点
+            # （首尾重合），配合原始 knot 才能还原成正确的闭合形状。
+            knots = entry.get("knots")
+
+            if knots:
+                kwargs["knot"] = knots
+
+            # 注意：这里不能再做 periodic 或 closeCurve。
+            # 数据里 CV 已经首尾重合，open 方式创建出来就是闭合的；
+            # 再套一层 periodic 会重算接缝，再 closeCurve 会多接一段，
+            # 两者都会让曲线在起点出现回折。
+            curve = cmds.curve(**kwargs)
+
+            # 兼容旧格式：没有 knots / form 的资源，用 closeCurve 闭合。
+            if not knots and form == 1:
                 cmds.closeCurve(
                     curve,
                     ch=False,
-                    preserveShape=True,
+                    preserveShape=False,
                     replaceOriginal=True
                 )
 
