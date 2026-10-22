@@ -281,6 +281,20 @@ class Jnt(object):
         cmds.setAttr(self.name + ".type", int(label_type))
         cmds.setAttr(self.name + ".otherType", other_type or "", type="string")
 
+    # ------------------------------------------------------------------
+    # 显示
+    # ------------------------------------------------------------------
+
+    def show_axis(self):
+        u"""显示关节的局部旋转轴。"""
+
+        cmds.setAttr(self.name + ".displayLocalAxis", True)
+
+    def hide_axis(self):
+        u"""隐藏关节的局部旋转轴。"""
+
+        cmds.setAttr(self.name + ".displayLocalAxis", False)
+
 
 class JntChain(object):
     u"""一条没有分支的关节链。
