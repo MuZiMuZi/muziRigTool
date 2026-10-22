@@ -4,12 +4,14 @@ u"""IK/FK 四肢模块（arm / leg 共用）。
 三链结构：
 
     bp 关节（定位，隐藏）
-        ├─ parentConstraint → ik 关节链 → ikHandle 驱动
-        └─ parentConstraint → fk 关节链 → FK 控制器驱动
+        └─ 只用于创建时定位，不参与驱动
 
-    ik 关节链 ─┐
-               ├─ parentConstraint → deform 关节（蒙皮用）
-    fk 关节链 ─┘
+    ik 关节链（隐藏）← ikHandle 驱动
+    fk 关节链（隐藏）← FK 控制器约束
+
+    ik 关节 ─┐
+             ├─ parentConstraint → deform 关节（蒙皮用）
+    fk 关节 ─┘
 
     Switch 属性（0=IK / 1=FK）
         ├─ 驱动两个约束的 w0 / w1
@@ -21,6 +23,16 @@ u"""IK/FK 四肢模块（arm / leg 共用）。
     两套驱动会互相覆盖。拆成「ik 链 + fk 链 + 最终 deform 关节」，
     各自独立计算，只在最后用权重混合，互不干扰。
 
+Guide 顺序（4 个）：
+
+    [0] 根关节        upr
+    [1] 中间关节      mid
+    [2] 末端关节      end
+    [3] 极向量        pole
+
+极向量位置由第 4 个 Guide 直接决定，不从关节位置推算——
+骨架模板导入时就该带着它，动画师摆在哪就是哪。
+
 结构示例（arm）：
 
     grp_lf_arm_jnt_001
@@ -30,73 +42,10 @@ u"""IK/FK 四肢模块（arm / leg 共用）。
         └─ jnt_lf_arm_fk_001~003       fk，隐藏
 """
 
-import math
-
 from maya import cmds
 
 from ....core.common.name_utils import Name
 from .base import RigModule
-
-
-# ----------------------------------------------------------------------
-# 向量运算
-# ----------------------------------------------------------------------
-
-def vector_sub(a, b):
-    u"""a - b。"""
-
-    return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
-
-
-def vector_cross(a, b):
-    u"""叉乘。"""
-
-    return [
-        a[1] * b[2] - a[2] * b[1],
-        a[2] * b[0] - a[0] * b[2],
-        a[0] * b[1] - a[1] * b[0],
-    ]
-
-
-def vector_normalize(vector):
-    u"""单位化；零向量返回自身。"""
-
-    length = math.sqrt(sum(value * value for value in vector))
-
-    if length == 0:
-        return list(vector)
-
-    return [value / length for value in vector]
-
-
-def pole_vector_position(start, mid, end, offset=2.0):
-    u"""由三个关节位置算出极向量控制器位置。
-
-    极向量落在链平面外侧，用两条边的叉乘得到法线方向。
-
-    Args:
-        start (list): 根关节位置。
-        mid (list): 中间关节位置。
-        end (list): 末端关节位置。
-        offset (float): 从 mid 沿法线偏移的距离。
-
-    Returns:
-        list: 极向量世界位置。
-    """
-
-    first = vector_sub(mid, start)
-    second = vector_sub(end, mid)
-    normal = vector_normalize(vector_cross(first, second))
-
-    # 叉乘方向依赖关节摆放，统一翻到 +Y 一侧
-    if normal[1] < 0:
-        normal = [-value for value in normal]
-
-    return [
-        mid[0] + normal[0] * offset,
-        mid[1] + normal[1] * offset,
-        mid[2] + normal[2] * offset,
-    ]
 
 
 class LimbIkFk(RigModule):
@@ -115,7 +64,6 @@ class LimbIkFk(RigModule):
         pole_color=6,
         size=1.0,
         axis="X+",
-        pole_offset=2.0,
         jnt_parent=None,
         ctrl_parent=None
     ):
@@ -135,7 +83,6 @@ class LimbIkFk(RigModule):
         self.pole_color = pole_color
         self.size = size
         self.axis = axis
-        self.pole_offset = pole_offset
 
         # 四套关节名
         self.deform_names = []
@@ -169,9 +116,13 @@ class LimbIkFk(RigModule):
     # ------------------------------------------------------------------
 
     def build_names(self):
-        u"""生成四套关节和控制器、约束的固定名称。"""
+        u"""生成四套关节和控制器、约束的固定名称。
 
-        count = len(self.guide_list)
+        guide_list 是 4 个（3 关节 + 1 极向量），
+        关节和控制器只按前 3 个算，所以 count 单独减一。
+        """
+
+        count = len(self.guide_list) - 1
 
         self.deform_names = [
             Name(type="jnt", side=self.side, part=self.module,
@@ -236,15 +187,17 @@ class LimbIkFk(RigModule):
         ).name
 
     def get_guides(self):
-        u"""读取 Guide 并生成名称，要求正好三个。"""
+        u"""读取 Guide 并生成名称。
+
+        需要 4 个 Guide：3 个关节位置 + 1 个极向量位置。
+        """
 
         super(LimbIkFk, self).get_guides()
 
-        if len(self.guide_list) != 3:
+        if len(self.guide_list) != 4:
             raise RuntimeError(
-                u"IK/FK 四肢需要正好 3 个 Guide，收到 {} 个".format(
-                    len(self.guide_list)
-                )
+                u"IK/FK 四肢需要 4 个 Guide（根 / 中 / 末端 / 极向量），"
+                u"收到 {} 个".format(len(self.guide_list))
             )
 
         self.build_names()
@@ -256,14 +209,17 @@ class LimbIkFk(RigModule):
     # ------------------------------------------------------------------
 
     def create_joints(self):
-        u"""创建四套关节：deform / bp / ik / fk。"""
+        u"""创建四套关节：deform / bp / ik / fk。
+
+        只处理前 3 个 Guide，第 4 个是极向量位置。
+        """
 
         self.deform_joints = []
         self.bp_joints = []
         self.ik_joints = []
         self.fk_joints = []
 
-        for index, guide in enumerate(self.guide_list):
+        for index, guide in enumerate(self.guide_list[:3]):
             self.deform_joints.append(
                 self.create_joint(self.deform_names[index], guide=guide)
             )
@@ -286,11 +242,15 @@ class LimbIkFk(RigModule):
     # ------------------------------------------------------------------
 
     def create_ctrls(self):
-        u"""FK 控制器链 + IK 末端控制器 + 极向量控制器。"""
+        u"""FK 控制器链 + IK 末端控制器 + 极向量控制器。
+
+        FK 和 IK 控制器按前 3 个 Guide 定位，
+        极向量控制器直接放在第 4 个 Guide 的位置。
+        """
 
         self.fk_ctrls = []
 
-        for index, guide in enumerate(self.guide_list):
+        for index, guide in enumerate(self.guide_list[:3]):
             ctrl = self.create_ctrl(
                 self.fk_ctrl_names[index],
                 guide=guide,
@@ -302,12 +262,12 @@ class LimbIkFk(RigModule):
             )
             self.fk_ctrls.append(ctrl)
 
-        # IK 末端控制器：放在 end 关节位置
         positions = [
             cmds.xform(guide, query=True, worldSpace=True, translation=True)
-            for guide in self.guide_list
+            for guide in self.guide_list[:3]
         ]
 
+        # IK 末端控制器：放在 end 关节位置
         self.ik_ctrl = self.create_ctrl(
             self.ik_ctrl_name,
             shape=self.ik_shape,
@@ -318,12 +278,12 @@ class LimbIkFk(RigModule):
         )
         cmds.xform(self.ik_ctrl.name, worldSpace=True, translation=positions[2])
 
-        # 极向量控制器
-        pole_position = pole_vector_position(
-            positions[0],
-            positions[1],
-            positions[2],
-            offset=self.pole_offset
+        # 极向量控制器：直接用 Guide 的位置，不做推算
+        pole_position = cmds.xform(
+            self.guide_list[3],
+            query=True,
+            worldSpace=True,
+            translation=True
         )
 
         self.pole_ctrl = self.create_ctrl(
@@ -382,7 +342,7 @@ class LimbIkFk(RigModule):
         # 1. FK 控制器驱动 fk 关节链
         #    bp 关节只用于创建时定位，不参与驱动——
         #    如果 bp 也约束 fk 关节，两套约束会把关节钉在原地。
-        for index in range(len(self.guide_list)):
+        for index in range(len(self.deform_joints)):
             constraint_name = self.fk_drive_constraint_names[index]
 
             if not cmds.objExists(constraint_name):
@@ -413,7 +373,7 @@ class LimbIkFk(RigModule):
             )
 
         # 4. ik / fk 混合驱动 deform 关节
-        for index in range(len(self.guide_list)):
+        for index in range(len(self.deform_joints)):
             constraint_name = self.blend_constraint_names[index]
 
             if not cmds.objExists(constraint_name):
