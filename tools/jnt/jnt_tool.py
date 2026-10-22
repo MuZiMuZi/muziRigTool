@@ -31,6 +31,7 @@ from maya import cmds
 from maya.app.general.mayaMixin import MayaQWidgetBaseMixin
 
 from ...core.common import rename_utils
+from ...core.deformation import skin_utils
 from ...core.geometry import curve_utils
 from ...core.rigging import constraint_utils
 from ...core.rigging import jnt_utils
@@ -70,6 +71,7 @@ class JntTool(MayaQWidgetBaseMixin, QtWidgets.QWidget):
         layout.addWidget(self.build_display_section())
         layout.addWidget(self.build_create_section())
         layout.addWidget(self.build_edit_section())
+        layout.addWidget(self.build_skin_section())
         layout.addWidget(self.build_constraint_section())
 
         self.status_label = QtWidgets.QLabel(u"就绪")
@@ -187,6 +189,36 @@ class JntTool(MayaQWidgetBaseMixin, QtWidgets.QWidget):
         self.clear_orient_button.setStyleSheet(theme.button_style)
         self.clear_orient_button.clicked.connect(self.clear_orient)
         layout.addWidget(self.clear_orient_button)
+
+        return group
+
+    def build_skin_section(self):
+        u"""蒙皮区块。"""
+
+        group = QtWidgets.QGroupBox(u"蒙皮")
+        layout = QtWidgets.QVBoxLayout(group)
+
+        hint = QtWidgets.QLabel(
+            u"绑定：骨骼 + 模型（最后一个是模型）。"
+            u"复制：多个模型，第一个是源。"
+        )
+        hint.setWordWrap(True)
+        hint.setStyleSheet(theme.subtitle_style)
+        layout.addWidget(hint)
+
+        row = QtWidgets.QHBoxLayout()
+
+        self.bind_skin_button = QtWidgets.QPushButton(u"绑定蒙皮")
+        self.bind_skin_button.setStyleSheet(theme.button_style)
+        self.bind_skin_button.clicked.connect(self.bind_skin)
+        row.addWidget(self.bind_skin_button)
+
+        self.copy_weight_button = QtWidgets.QPushButton(u"复制权重")
+        self.copy_weight_button.setStyleSheet(theme.button_style)
+        self.copy_weight_button.clicked.connect(self.copy_weights)
+        row.addWidget(self.copy_weight_button)
+
+        layout.addLayout(row)
 
         return group
 
@@ -627,6 +659,55 @@ class JntTool(MayaQWidgetBaseMixin, QtWidgets.QWidget):
             cmds.undoInfo(closeChunk=True)
 
         self.status_label.setText(u"批量父约束：{} 对".format(created))
+
+    # ------------------------------------------------------------------
+    # 蒙皮
+    # ------------------------------------------------------------------
+
+    def bind_skin(self):
+        u"""绑定蒙皮：最后一个选择是模型，其余都当作骨骼。"""
+
+        selection = cmds.ls(orderedSelection=True) or []
+
+        if len(selection) < 2:
+            self.status_label.setText(u"请选择骨骼和模型")
+            return
+
+        joints = selection[:-1]
+        geometry = selection[-1]
+
+        cmds.undoInfo(openChunk=True)
+
+        try:
+            skin_utils.bind_skin(joints, geometry)
+        except Exception as error:
+            cmds.warning(str(error))
+            self.status_label.setText(u"绑定失败：{}".format(error))
+            return
+        finally:
+            cmds.undoInfo(closeChunk=True)
+
+        self.status_label.setText(
+            u"绑定蒙皮：{} 个骨骼 → {}".format(len(joints), geometry)
+        )
+
+    def copy_weights(self):
+        u"""复制权重：第一个模型是源，其余是目标。"""
+
+        selection = cmds.ls(orderedSelection=True) or []
+
+        if len(selection) < 2:
+            self.status_label.setText(u"请至少选择两个模型")
+            return
+
+        try:
+            created = skin_utils.copy_skin_weights(selection[0], selection[1:])
+        except Exception as error:
+            cmds.warning(str(error))
+            self.status_label.setText(u"复制失败：{}".format(error))
+            return
+
+        self.status_label.setText(u"复制权重：{} 个目标".format(len(created)))
 
 
 _window = None
