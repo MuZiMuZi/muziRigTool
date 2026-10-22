@@ -5,8 +5,10 @@ systems.rig
 
 绑定系统。
 
+    guide       定位器模板：导入 .ma、按命名取关节
     module      绑定模块包
-        bone        契约层：生命周期与执行顺序
-        base        基础实现：Guide -> Joint -> Ctrl -> Hierarchy
-        chain       链式绑定：FK 链
+        base        RigModule 基类
+        chain       纯 FK 链
+        ikfk        IK/FK 三链
+        arm / leg   具体部位
 """

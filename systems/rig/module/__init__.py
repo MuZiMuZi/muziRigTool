@@ -5,10 +5,19 @@ systems.rig.module
 
 绑定模块。
 
-    bone     契约层：生命周期与执行顺序
-    base     基础实现：关节 / 控制器 / 约束
-    chain    链式绑定
-    部位模块   arm / leg / hand / ...
+    base       基类：Guide -> 关节 -> 控制器 -> 层级 + 通用构件
+    chain      纯 FK 链
+    ikfk       IK/FK 三链（deform / bp / ik / fk + Switch）
+    arm        手臂：三链 + 手部挂接点
+    leg        腿：三链 + 脚部挂接点
 
-本文件不导入任何子模块，避免 import 时产生副作用。
+继承关系：
+
+    RigModule
+    ├─ FkChain
+    └─ LimbIkFk
+        ├─ Arm
+        └─ Leg
+
+新模块继承 RigModule，重写 create_joints / create_ctrls / connect_rig。
 """

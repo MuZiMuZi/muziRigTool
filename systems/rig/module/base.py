@@ -328,9 +328,14 @@ class RigModule(object):
     def build_rig(self):
         u"""创建模块的绑定输出。
 
-        固定顺序：Guide -> Joint -> Ctrl -> Hierarchy。
+        固定顺序：清理旧输出 -> Guide -> Joint -> Ctrl -> Hierarchy。
         连接单独放在 connect_rig()，这样创建和连接可以分别测试。
+
+        先清旧输出是为了支持重复构建：同一个实例第二次 build 时，
+        上一次的关节和控制器会被删掉再重建，不会撞名。
         """
+
+        self.delete_rig()
 
         self.get_guides()
         self.create_joints()
