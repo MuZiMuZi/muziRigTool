@@ -204,6 +204,127 @@ class RigModule(object):
 
         return self.jnt_master_grp, self.ctrl_master_grp
 
+    # ------------------------------------------------------------------
+    # 通用构件
+    # ------------------------------------------------------------------
+
+    def create_joints_for_guides(self, guides, names):
+        u"""按 Guide 和名称列表批量建关节。
+
+        Args:
+            guides (list): 定位器列表。
+            names (list): 关节名列表，数量和 guides 一致。
+
+        Returns:
+            list: Jnt 对象列表。
+        """
+
+        return [
+            self.create_joint(name, guide=guide)
+            for name, guide in zip(names, guides)
+        ]
+
+    def create_ctrls_for_guides(
+        self,
+        guides,
+        names,
+        shape="circle",
+        color=17,
+        size=1.0,
+        axis="X+",
+        hierarchy=True
+    ):
+        u"""按 Guide 和名称列表批量建控制器。
+
+        Args:
+            guides (list): 定位器列表。
+            names (list): 控制器名列表。
+            shape (str): 形状名。
+            color (int): 颜色索引。
+            size (float): 大小倍率。
+            axis (str): 朝向。
+            hierarchy (bool): 是否建完整层级。
+
+        Returns:
+            list: Ctrl 对象列表。
+        """
+
+        return [
+            self.create_ctrl(
+                name,
+                guide=guide,
+                shape=shape,
+                color=color,
+                size=size,
+                axis=axis,
+                hierarchy=hierarchy
+            )
+            for name, guide in zip(names, guides)
+        ]
+
+    def chain_joints(self, joints, parent=None):
+        u"""把关节按顺序串成链。
+
+        第一个挂到 parent（默认 jnt 总组），后续依次挂到上一个关节下。
+
+        Args:
+            joints (list): Jnt 对象列表。
+            parent (str | None): 链根父级。
+
+        Returns:
+            list: 传入的关节列表。
+        """
+
+        parent = parent or self.jnt_master_grp
+
+        for jnt in joints:
+            cmds.parent(jnt.name, parent, absolute=True)
+            parent = jnt.name
+
+        return joints
+
+    def chain_zero_groups(self, ctrls, parent=None):
+        u"""把控制器的 zero 组串成链。
+
+        第一个挂到 parent（默认 ctrl 总组），后续挂到上一个控制器的 output，
+        这样旋转父控制器会带动整条链。
+
+        Args:
+            ctrls (list): Ctrl 对象列表。
+            parent (str | None): 链根父级。
+
+        Returns:
+            list: 传入的控制器列表。
+        """
+
+        parent = parent or self.ctrl_master_grp
+
+        for ctrl in ctrls:
+            zero_grp = ctrl.name.replace("ctrl_", "zero_", 1)
+            cmds.parent(zero_grp, parent, absolute=True)
+            parent = ctrl.get_output()
+
+        return ctrls
+
+    def delete_named_nodes(self, names):
+        u"""按名称删节点，不存在就跳过。
+
+        Args:
+            names (list): 节点名列表。
+
+        Returns:
+            list: 实际删掉的节点名。
+        """
+
+        deleted = []
+
+        for name in names:
+            if cmds.objExists(name):
+                cmds.delete(name)
+                deleted.append(name)
+
+        return deleted
+
     def build_rig(self):
         u"""创建模块的绑定输出。
 

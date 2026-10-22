@@ -238,29 +238,19 @@ class LimbIkFk(RigModule):
     def create_deform_joints(self):
         u"""deform 关节：蒙皮用，可见。"""
 
-        self.deform_joints = []
-
-        for index, guide in enumerate(self.guide_list[:3]):
-            jnt = self.create_joint(self.deform_names[index], guide=guide)
-            self.deform_joints.append(jnt)
+        self.deform_joints = self.create_joints_for_guides(
+            self.guide_list[:3],
+            self.deform_names
+        )
 
     def create_driver_joints(self):
         u"""bp / ik / fk 三套驱动关节，全部隐藏。"""
 
-        self.bp_joints = []
-        self.ik_joints = []
-        self.fk_joints = []
+        guides = self.guide_list[:3]
 
-        for index, guide in enumerate(self.guide_list[:3]):
-            self.bp_joints.append(
-                self.create_joint(self.bp_names[index], guide=guide)
-            )
-            self.ik_joints.append(
-                self.create_joint(self.ik_jnt_names[index], guide=guide)
-            )
-            self.fk_joints.append(
-                self.create_joint(self.fk_jnt_names[index], guide=guide)
-            )
+        self.bp_joints = self.create_joints_for_guides(guides, self.bp_names)
+        self.ik_joints = self.create_joints_for_guides(guides, self.ik_jnt_names)
+        self.fk_joints = self.create_joints_for_guides(guides, self.fk_jnt_names)
 
         for jnt in self.bp_joints + self.ik_joints + self.fk_joints:
             cmds.setAttr(jnt.name + ".visibility", 0)
@@ -278,19 +268,14 @@ class LimbIkFk(RigModule):
     def create_fk_ctrls(self):
         u"""每个关节一个 FK 控制器。"""
 
-        self.fk_ctrls = []
-
-        for index, guide in enumerate(self.guide_list[:3]):
-            ctrl = self.create_ctrl(
-                self.fk_ctrl_names[index],
-                guide=guide,
-                shape=self.config.fk_shape,
-                color=self.config.fk_color,
-                size=self.config.size,
-                axis=self.config.axis,
-                hierarchy=True
-            )
-            self.fk_ctrls.append(ctrl)
+        self.fk_ctrls = self.create_ctrls_for_guides(
+            self.guide_list[:3],
+            self.fk_ctrl_names,
+            shape=self.config.fk_shape,
+            color=self.config.fk_color,
+            size=self.config.size,
+            axis=self.config.axis
+        )
 
     def create_ik_ctrls(self):
         u"""末端 IK 控制器 + 极向量控制器。"""
@@ -339,36 +324,16 @@ class LimbIkFk(RigModule):
 
         super(LimbIkFk, self).setup_hierarchy()
 
-        self.chain_joints()
-        self.chain_fk_ctrls()
-        self.place_ik_ctrls()
-
-    def chain_joints(self):
-        u"""四套关节各自串成链。"""
-
-        chains = (
+        for chain in (
             self.deform_joints,
             self.bp_joints,
             self.ik_joints,
             self.fk_joints,
-        )
+        ):
+            self.chain_joints(chain)
 
-        for chain in chains:
-            parent = self.jnt_master_grp
-
-            for jnt in chain:
-                cmds.parent(jnt.name, parent, absolute=True)
-                parent = jnt.name
-
-    def chain_fk_ctrls(self):
-        u"""FK 控制器的 zero 组挂到上一个 output 下。"""
-
-        parent = self.ctrl_master_grp
-
-        for ctrl in self.fk_ctrls:
-            zero_grp = ctrl.name.replace("ctrl_", "zero_", 1)
-            cmds.parent(zero_grp, parent, absolute=True)
-            parent = ctrl.get_output()
+        self.chain_zero_groups(self.fk_ctrls)
+        self.place_ik_ctrls()
 
     def place_ik_ctrls(self):
         u"""IK 和极向量控制器平铺在 ctrl 组下。"""

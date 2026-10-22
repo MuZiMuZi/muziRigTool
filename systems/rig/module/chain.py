@@ -118,48 +118,30 @@ class FkChain(RigModule):
     def create_joints(self):
         u"""每个 Guide 建一个关节。"""
 
-        self.jnt_objects = []
-
-        for index, guide in enumerate(self.guide_list):
-            jnt = self.create_joint(self.jnt_names[index], guide=guide)
-            self.jnt_objects.append(jnt)
+        self.jnt_objects = self.create_joints_for_guides(
+            self.guide_list,
+            self.jnt_names
+        )
 
     def create_ctrls(self):
         u"""每个 Guide 建一个 FK 控制器。"""
 
-        self.ctrl_objects = []
-
-        for index, guide in enumerate(self.guide_list):
-            ctrl = self.create_ctrl(
-                self.ctrl_names[index],
-                guide=guide,
-                shape=self.shape,
-                color=self.color,
-                size=self.size,
-                axis=self.axis,
-                hierarchy=True
-            )
-            self.ctrl_objects.append(ctrl)
+        self.ctrl_objects = self.create_ctrls_for_guides(
+            self.guide_list,
+            self.ctrl_names,
+            shape=self.shape,
+            color=self.color,
+            size=self.size,
+            axis=self.axis
+        )
 
     def setup_hierarchy(self):
         u"""关节串成链，控制器通过 zero 组串成链。"""
 
         super(FkChain, self).setup_hierarchy()
 
-        # 关节链：第一个挂总组，后续依次挂上一个关节
-        parent = self.jnt_master_grp
-
-        for jnt in self.jnt_objects:
-            cmds.parent(jnt.name, parent, absolute=True)
-            parent = jnt.name
-
-        # 控制器链：第一个 zero 挂总组，后续挂上一个控制器的 output
-        parent = self.ctrl_master_grp
-
-        for ctrl in self.ctrl_objects:
-            zero_grp = ctrl.name.replace("ctrl_", "zero_", 1)
-            cmds.parent(zero_grp, parent, absolute=True)
-            parent = ctrl.get_output()
+        self.chain_joints(self.jnt_objects)
+        self.chain_zero_groups(self.ctrl_objects)
 
     def connect_rig(self):
         u"""用控制器的 output 约束对应关节。
