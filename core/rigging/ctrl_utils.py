@@ -165,7 +165,8 @@ class Ctrl(object):
             ctrl.match_transform(target)
 
         if hierarchy:
-            ctrl.create_hierarchy()
+            ctrl.create_hierarchy(sub_ctrl=True, sub_shape=shape,
+                         sub_color=color, sub_size=size*0.7)
 
         return ctrl
 
