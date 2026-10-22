@@ -29,7 +29,7 @@ import maya.cmds as cmds
 
 # 控制器层级，从内到外排列。
 # create_hierarchy 会按这个顺序，一层层把 ctrl 往外包。
-layers = ("offset", "connect", "space", "driven", "zero")
+hierarchy = ("offset", "connect", "space", "driven", "zero")
 
 # 形状库里的曲线都按 X+ 朝向制作。
 # 其他朝向不需要另做一套形状，直接把这些 CV 旋转过去即可。
@@ -387,7 +387,7 @@ class Ctrl(object):
 
         current = self.name
 
-        for layer in layers:
+        for layer in hierarchy:
             group = self._ensure_parent(current, layer)
             current = group
 
