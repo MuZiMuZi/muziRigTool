@@ -1,147 +1,40 @@
 # coding=utf-8
-u"""创建控制器工具。"""
+u"""创建控制器工具。
+
+界面结构：
+
+    ┌───────────────────────────┐
+    │ 名称   [ctrl_md_new_fk_001]│
+    ├───────────────────────────┤
+    │ 形状   [分页图标网格]        │
+    ├───────────────────────────┤
+    │ 颜色   [滑块 + 色块 + 数字]  │
+    ├───────────────────────────┤
+    │ 大小   [滑块 + 数字]         │
+    ├───────────────────────────┤
+    │ 轴向   [X+        ▼]       │
+    │ 处理   [Parent    ▼]       │
+    │ ☑ 创建完整层级             │
+    │ [         创建         ]   │
+    └───────────────────────────┘
+
+职责划分：
+
+    本文件     只负责界面编排和参数收集
+    ctrl_utils 负责控制器创建、形状、层级、与物体的关系
+    ui/widgets 负责可复用控件（颜色、大小）
+"""
 
 import os
 
 from PySide2 import QtCore, QtGui, QtWidgets
 
+from maya import cmds
 from maya.app.general.mayaMixin import MayaQWidgetBaseMixin
 
 from ...core.rigging.ctrl_utils import Ctrl
-
-
-
-# Maya 的 32 个 override color（RGB 0~1）
-# 数据来自旧库 ui/widgets/color_index_slider.py，经过生产验证。
-maya_colors = {
-    0: (0.467, 0.467, 0.467),   # 深灰
-    1: (0.000, 0.000, 0.000),   # 黑
-    2: (0.200, 0.200, 0.200),   # 深灰
-    3: (0.600, 0.600, 0.600),   # 中灰
-    4: (0.800, 0.000, 0.000),   # 暗红
-    5: (0.000, 0.000, 0.400),   # 深蓝
-    6: (0.000, 0.000, 1.000),   # 蓝
-    7: (0.000, 0.400, 0.000),   # 深绿
-    8: (0.200, 0.000, 0.400),   # 紫
-    9: (0.800, 0.400, 0.000),   # 橙
-    10: (0.600, 0.400, 0.200),  # 棕
-    11: (0.400, 0.200, 0.000),  # 深棕
-    12: (1.000, 1.000, 0.000),  # 黄
-    13: (1.000, 0.000, 0.000),  # 红
-    14: (0.000, 1.000, 0.000),  # 绿
-    15: (0.000, 1.000, 1.000),  # 青
-    16: (1.000, 1.000, 1.000),  # 白
-    17: (1.000, 1.000, 0.000),  # 黄
-    18: (0.000, 0.800, 1.000),  # 亮蓝
-    19: (1.000, 0.600, 0.800),  # 粉
-    20: (1.000, 0.400, 0.400),  # 淡红
-    21: (0.600, 1.000, 0.400),  # 黄绿
-    22: (1.000, 0.800, 0.400),  # 橙黄
-    23: (0.400, 0.600, 1.000),  # 蓝紫
-    24: (1.000, 1.000, 1.000),  # 白
-    25: (1.000, 1.000, 0.800),  # 米白
-    26: (0.800, 1.000, 0.800),  # 淡绿
-    27: (0.800, 1.000, 1.000),  # 淡青
-    28: (1.000, 0.800, 1.000),  # 淡紫
-    29: (1.000, 0.600, 0.600),  # 淡粉
-    30: (0.800, 1.000, 0.600),  # 浅黄绿
-    31: (0.600, 0.800, 1.000),  # 浅蓝
-}
-
-
-class ColorPicker(QtWidgets.QWidget):
-    u"""颜色选择器：滑块 + 色块预览 + 索引数字。"""
-
-    def __init__(self, parent=None):
-        super(ColorPicker, self).__init__(parent)
-
-        layout = QtWidgets.QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        # 滑块：0 ~ 31
-        self.slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.slider.setRange(0, 31)
-        self.slider.setValue(17)
-        layout.addWidget(self.slider)
-
-        # 色块：背景色动态更新
-        self.preview = QtWidgets.QLabel()
-        self.preview.setFixedSize(36, 22)
-        layout.addWidget(self.preview)
-
-        # 数字：显示当前索引
-        self.index_label = QtWidgets.QLabel("17")
-        self.index_label.setFixedWidth(24)
-        layout.addWidget(self.index_label)
-
-        self.slider.valueChanged.connect(self.update_preview)
-        self.update_preview(self.slider.value())
-
-    @property
-    def ctrl_color(self):
-        u"""当前颜色索引。"""
-
-        return self.slider.value()
-
-    def update_preview(self, index):
-        u"""按索引刷新色块和数字。"""
-
-        red, green, blue = maya_colors[index]
-        color = QtGui.QColor.fromRgbF(red, green, blue)
-
-        self.preview.setStyleSheet(
-            "background-color: {}; border: 1px solid #555555;".format(color.name())
-        )
-        self.index_label.setText(str(index))
-
-
-class SizePicker(QtWidgets.QWidget):
-    u"""大小选择器：滑块 + 数字输入，双向联动。"""
-
-    def __init__(self, parent=None):
-        super(SizePicker, self).__init__(parent)
-
-        layout = QtWidgets.QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        # 滑块内部用 1 ~ 100 表示 0.1 ~ 10.0（QSlider 只接受整数）
-        self.slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.slider.setRange(1, 100)
-        self.slider.setValue(10)
-        layout.addWidget(self.slider)
-
-        # 数字框：精确输入
-        self.spin = QtWidgets.QDoubleSpinBox()
-        self.spin.setRange(0.1, 10.0)
-        self.spin.setSingleStep(0.1)
-        self.spin.setDecimals(1)
-        self.spin.setValue(1.0)
-        self.spin.setFixedWidth(64)
-        layout.addWidget(self.spin)
-
-        self.slider.valueChanged.connect(self.on_slider_changed)
-        self.spin.valueChanged.connect(self.on_spin_changed)
-
-    @property
-    def ctrl_size(self):
-        u"""当前大小。"""
-
-        return self.spin.value()
-
-    def on_slider_changed(self, value):
-        u"""滑块动了，更新数字框。"""
-
-        # 屏蔽信号，避免数字框回写滑块造成循环触发
-        self.spin.blockSignals(True)
-        self.spin.setValue(value / 10.0)
-        self.spin.blockSignals(False)
-
-    def on_spin_changed(self, value):
-        u"""数字框改了，同步滑块。"""
-
-        self.slider.blockSignals(True)
-        self.slider.setValue(int(round(value * 10)))
-        self.slider.blockSignals(False)
+from ...ui.widgets.color_picker import ColorPicker
+from ...ui.widgets.size_picker import SizePicker
 
 
 class CreateCtrlWindow(MayaQWidgetBaseMixin, QtWidgets.QWidget):
@@ -151,7 +44,7 @@ class CreateCtrlWindow(MayaQWidgetBaseMixin, QtWidgets.QWidget):
         super(CreateCtrlWindow, self).__init__(parent)
 
         self.setWindowTitle(u"创建控制器")
-        self.resize(360, 380)
+        self.resize(360, 520)
 
         self.build_ui()
 
@@ -264,7 +157,7 @@ class CreateCtrlWindow(MayaQWidgetBaseMixin, QtWidgets.QWidget):
 
         polygon_names = ("hex", "octagon_bevel", "triangle_round")
 
-        for name in CreateCtrlWindow.get_shape_names():
+        for name in Ctrl.get_shape_names():
             if name.startswith("arrow"):
                 groups[0][1].append(name)
             elif name.startswith("circle"):
@@ -277,18 +170,6 @@ class CreateCtrlWindow(MayaQWidgetBaseMixin, QtWidgets.QWidget):
                 groups[4][1].append(name)
 
         return [item for item in groups if item[1]]
-
-    @staticmethod
-    def get_shape_names():
-        u"""读取形状库目录，返回所有形状名称。"""
-
-        names = []
-
-        for file_name in sorted(os.listdir(Ctrl.shape_dir)):
-            if file_name.endswith(".json"):
-                names.append(os.path.splitext(file_name)[0])
-
-        return names
 
     def build_color_section(self):
         u"""颜色区块。"""
@@ -313,10 +194,26 @@ class CreateCtrlWindow(MayaQWidgetBaseMixin, QtWidgets.QWidget):
         return group
 
     def build_action_section(self):
-        u"""操作区块。"""
+        u"""操作区块：轴向、处理方式、层级开关、创建按钮。"""
 
         group = QtWidgets.QGroupBox(u"操作")
         layout = QtWidgets.QVBoxLayout(group)
+
+        form = QtWidgets.QFormLayout()
+
+        # 轴向：控制形状的朝向
+        self.axis_combo = QtWidgets.QComboBox()
+        self.axis_combo.addItems(["X+", "X-", "Y+", "Y-", "Z+", "Z-"])
+        form.addRow(u"轴向", self.axis_combo)
+
+        # 处理方式：创建后对当前选中物体做什么
+        self.operation_combo = QtWidgets.QComboBox()
+        self.operation_combo.addItem(u"Parent · 挂到控制器下", "parent")
+        self.operation_combo.addItem(u"Constraint · 约束物体", "cons")
+        self.operation_combo.addItem(u"None · 仅对齐", "none")
+        form.addRow(u"处理", self.operation_combo)
+
+        layout.addLayout(form)
 
         self.hierarchy_check = QtWidgets.QCheckBox(u"创建完整层级（含 subctrl 与 output）")
         self.hierarchy_check.setChecked(True)
@@ -333,27 +230,95 @@ class CreateCtrlWindow(MayaQWidgetBaseMixin, QtWidgets.QWidget):
     # ------------------------------------------------------------------
 
     def create_button_click(self):
-        u"""点击创建按钮时执行。"""
+        u"""点击创建按钮时执行。
 
-        name = self.name_edit.text().strip()
+        规则：
 
-        try:
-            ctrl = Ctrl.create_ctrl(
-                name,
-                shape=self.get_shape_name(),
-                color=self.color_picker.ctrl_color,
-                size=self.size_picker.ctrl_size,
-                hierarchy=self.hierarchy_check.isChecked()
-            )
-        except Exception as error:
-            # 失败时把原因打印出来，不弹窗打断操作。
-            print(u"创建失败：{}".format(error))
+            没有选中物体     创建一个控制器，放在世界原点
+            选中 N 个物体    创建 N 个控制器，按选择顺序逐个对齐
+        """
+
+        # orderedSelection=True 表示「按鼠标点击顺序」，
+        # 它和 selection=True 互斥，不能同时给。
+        selection = cmds.ls(orderedSelection=True) or []
+        targets = selection if selection else [None]
+
+        # 名称必须带三位序号，没有就补上 _001
+        name = self.ensure_serial(self.name_edit.text().strip())
+
+        created = []
+
+        for target in targets:
+            try:
+                ctrl = Ctrl.create_ctrl(
+                    name,
+                    shape=self.get_shape_name(),
+                    color=self.color_picker.ctrl_color,
+                    size=self.size_picker.ctrl_size,
+                    axis=self.axis_combo.currentText(),
+                    target=target,
+                    hierarchy=self.hierarchy_check.isChecked()
+                )
+            except Exception as error:
+                # 单个失败不影响后面的物体，跳过并继续下一个序号。
+                print(u"创建失败（{}）：{}".format(name, error))
+                name = self.next_name(name)
+                continue
+
+            self.apply_operation(ctrl, [target] if target else [])
+            created.append(ctrl.name)
+            print(u"已创建：{}".format(ctrl.name))
+
+            name = self.next_name(name)
+
+        # 输入框停在下一个可用名称上，方便连续创建。
+        self.name_edit.setText(name)
+
+        if created:
+            print(u"本次共创建 {} 个控制器。".format(len(created)))
+
+    @staticmethod
+    def ensure_serial(name):
+        u"""确保名称以三位序号结尾，没有就补 _001。
+
+        ctrl_md_new_fk      -> ctrl_md_new_fk_001
+        ctrl_md_new_fk_007  -> 保持原样
+        """
+
+        if not name:
+            return "ctrl_001"
+
+        if "_" in name:
+            prefix, _, suffix = name.rpartition("_")
+
+            if len(suffix) == 3 and suffix.isdigit():
+                return name
+
+        return name + "_001"
+
+    def apply_operation(self, ctrl, selection):
+        u"""按选择的处理方式操作当前选中的物体。
+
+        Args:
+            ctrl (Ctrl): 刚创建好的控制器。
+            selection (list): 创建前记录的选中物体。
+        """
+
+        mode = self.operation_combo.currentData()
+
+        if mode == "none":
             return
 
-        print(u"已创建：{}".format(ctrl.name))
+        if not selection:
+            print(u"未选中物体，跳过 {} 处理。".format(mode))
+            return
 
-        # 名称序号自动加一，方便连续创建。
-        self.name_edit.setText(self.next_name(name))
+        if mode == "parent":
+            ctrl.parent_objects(selection)
+            return
+
+        if mode == "cons":
+            ctrl.constrain_objects(selection)
 
     @staticmethod
     def next_name(name):
