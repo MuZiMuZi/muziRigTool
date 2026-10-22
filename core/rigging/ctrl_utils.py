@@ -196,6 +196,18 @@ class Ctrl(object):
         with open(path, "r") as handle:
             return json.load(handle)
 
+    @classmethod
+    def get_shape_names(cls):
+        u"""返回形状库里所有形状名称。"""
+
+        names = []
+
+        for file_name in sorted(os.listdir(cls.shape_dir)):
+            if file_name.endswith(".json"):
+                names.append(os.path.splitext(file_name)[0])
+
+        return names
+
     def get_shapes(self):
         u"""返回控制器下的所有曲线形状。
 
@@ -488,13 +500,18 @@ class Ctrl(object):
 
         if cmds.objExists(sub_name):
             sub = Ctrl(sub_name)
+            # 已存在的 subctrl 也要确保和主控制器同位置，
+            # 否则重复构建时它会停在旧位置。
+            cmds.matchTransform(sub.name, self.name)
         else:
             # hierarchy=False：subctrl 只是 ctrl 下面的一层，不需要自己再包八层。
+            # target=self.name：一定对齐到主控制器，不能留在世界原点。
             sub = Ctrl.create_ctrl(
                 sub_name,
                 shape=shape,
                 color=color,
                 size=size,
+                target=self.name,
                 hierarchy=False
             )
             cmds.parent(sub.name, self.name, absolute=True)
@@ -512,3 +529,45 @@ class Ctrl(object):
                 cmds.connectAttr(source, target, force=True)
 
         return sub
+
+    # ------------------------------------------------------------------
+    # 与外部物体的关系
+    # ------------------------------------------------------------------
+
+    def get_output(self):
+        u"""返回 output 组；没有建立层级时返回控制器自身。"""
+
+        output_name = self.name.replace("ctrl_", "output_", 1)
+
+        if cmds.objExists(output_name):
+            return output_name
+
+        return self.name
+
+    def parent_objects(self, objects):
+        u"""把物体挂到控制器的 output 组下。
+
+        Args:
+            objects (list): 需要挂接的节点。
+        """
+
+        parent_node = self.get_output()
+
+        for obj in objects:
+            # 已经挂在这个组下就跳过，避免重复 parent 产生警告
+            if cmds.listRelatives(obj, parent=True) == [parent_node]:
+                continue
+
+            cmds.parent(obj, parent_node, absolute=True)
+
+    def constrain_objects(self, objects):
+        u"""用控制器约束物体，并保持物体原位。
+
+        maintainOffset=True 保证约束建立时物体不会被控制器拉走。
+
+        Args:
+            objects (list): 需要约束的节点。
+        """
+
+        for obj in objects:
+            cmds.parentConstraint(self.name, obj, maintainOffset=True)
