@@ -52,8 +52,8 @@ body_part_chains = {
     "leg": ("upperLeg", "knee", "ankle"),
     "spine": (
         "spine_guide_001",
-        "spine_guide_004",
-        "spine_guide_006",
+        "spine_guide_003",
+        "spine_guide_005",
     ),
     "neck": ("neck_guide_001", "neck_guide_002", "head_guide_001"),
 }
