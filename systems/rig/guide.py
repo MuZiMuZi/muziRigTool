@@ -189,16 +189,20 @@ def create_auto_pole_vector(start, mid, end, pole, distance=25.0):
     return nodes
 
 
-def create_pole_display(mid, pole, name="crv_auto_pole_display"):
+def create_pole_display(mid, pole, name="crv_auto_pole_display", module="limb"):
     u"""创建一条连接关节和极向量的显示曲线。
 
     两个 CV 分别由 mid 和 pole 的世界位置驱动，
     移动任一端曲线都会跟着变。
 
+    曲线用 Template 显示：视口里可见但点不到，只作视觉参考。
+    脚本仍然可以选中它（Maya 的显示模式只影响交互）。
+
     Args:
         mid (str): 中间关节。
         pole (str): 极向量定位器。
         name (str): 曲线名。
+        module (str): 用于内部节点命名，例如 arm / leg。
 
     Returns:
         str: 曲线 transform 名。
@@ -216,7 +220,7 @@ def create_pole_display(mid, pole, name="crv_auto_pole_display"):
     for index, node in enumerate((mid, pole)):
         decompose = cmds.createNode(
             "decomposeMatrix",
-            name="{}_cv{}".format(name, index)
+            name="autoPole_display_{}_cv{}".format(module, index)
         )
         cmds.connectAttr(node + ".worldMatrix[0]", decompose + ".inputMatrix")
         cmds.connectAttr(
@@ -224,9 +228,10 @@ def create_pole_display(mid, pole, name="crv_auto_pole_display"):
             shape + ".cv[{}]".format(index)
         )
 
-    # 曲线本身不参与渲染，只做视觉参考
-    cmds.setAttr(shape + ".overrideEnabled", 1)
-    cmds.setAttr(shape + ".overrideColor", 6)
+    # 模板模式：可见但不可交互选择
+    # 注意 overrideEnabled 是 bool 属性，用 True 而不是 1
+    cmds.setAttr(shape + ".overrideEnabled", True)
+    cmds.setAttr(shape + ".overrideDisplayType", 1)
 
     return curve
 
