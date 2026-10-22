@@ -56,6 +56,181 @@ def _length(vector):
     return math.sqrt(sum(value * value for value in vector))
 
 
+def create_auto_pole_vector(start, mid, end, pole, distance=25.0):
+    u"""用节点网络让极向量自动保持在关节链平面上。
+
+    极向量不能在「平面法线」上——那样反而垂直于平面。
+    正确的位置是平面内、垂直于链的方向：
+
+        v = mid - start
+        axis = end - start
+        ratio = (v · axis) / (axis · axis)
+        proj = start + axis * ratio
+        offset = mid - proj          -> 平面内、垂直于链
+        pole = mid + normalize(offset) * distance
+
+    这样移动任何一个关节，极向量都会跟着重新定位，
+    并且始终和三个关节共面。
+
+    Args:
+        start (str): 根关节。
+        mid (str): 中间关节。
+        end (str): 末端关节。
+        pole (str): 极向量定位器。
+        distance (float): 距离 mid 的长度。
+
+    Returns:
+        list: 建好的节点列表。
+    """
+
+    nodes = []
+
+    # 三个关节的世界位置
+    decomposers = {}
+
+    for name, node in (("start", start), ("mid", mid), ("end", end)):
+        decompose = cmds.createNode(
+            "decomposeMatrix",
+            name="autoPole_{}_world".format(name)
+        )
+        cmds.connectAttr(node + ".worldMatrix[0]", decompose + ".inputMatrix")
+
+        decomposers[name] = decompose
+        nodes.append(decompose)
+
+    # v = mid - start
+    to_mid = cmds.createNode("plusMinusAverage", name="autoPole_toMid")
+    cmds.setAttr(to_mid + ".operation", 2)   # subtract
+    cmds.connectAttr(decomposers["mid"] + ".outputTranslate", to_mid + ".input3D[0]")
+    cmds.connectAttr(decomposers["start"] + ".outputTranslate", to_mid + ".input3D[1]")
+    nodes.append(to_mid)
+
+    # axis = end - start
+    axis = cmds.createNode("plusMinusAverage", name="autoPole_axis")
+    cmds.setAttr(axis + ".operation", 2)
+    cmds.connectAttr(decomposers["end"] + ".outputTranslate", axis + ".input3D[0]")
+    cmds.connectAttr(decomposers["start"] + ".outputTranslate", axis + ".input3D[1]")
+    nodes.append(axis)
+
+    # dot1 = v · axis
+    dot_mid = cmds.createNode("vectorProduct", name="autoPole_dotMid")
+    cmds.setAttr(dot_mid + ".operation", 1)   # dot（Maya 2023 实测）
+    cmds.connectAttr(to_mid + ".output3D", dot_mid + ".input1")
+    cmds.connectAttr(axis + ".output3D", dot_mid + ".input2")
+    nodes.append(dot_mid)
+
+    # dot2 = axis · axis
+    dot_axis = cmds.createNode("vectorProduct", name="autoPole_dotAxis")
+    cmds.setAttr(dot_axis + ".operation", 1)
+    cmds.connectAttr(axis + ".output3D", dot_axis + ".input1")
+    cmds.connectAttr(axis + ".output3D", dot_axis + ".input2")
+    nodes.append(dot_axis)
+
+    # ratio = dot1 / dot2
+    ratio = cmds.createNode("multiplyDivide", name="autoPole_ratio")
+    cmds.setAttr(ratio + ".operation", 2)   # divide
+    cmds.connectAttr(dot_mid + ".outputX", ratio + ".input1X")
+    cmds.connectAttr(dot_axis + ".outputX", ratio + ".input2X")
+    nodes.append(ratio)
+
+    # proj = axis * ratio（标量乘向量，ratio 要连到三个分量）
+    projection = cmds.createNode("multiplyDivide", name="autoPole_projection")
+    cmds.connectAttr(axis + ".output3D", projection + ".input1")
+
+    for component in ("X", "Y", "Z"):
+        cmds.connectAttr(
+            ratio + ".outputX",
+            projection + ".input2{}".format(component)
+        )
+
+    nodes.append(projection)
+
+    # offset = v - proj
+    offset = cmds.createNode("plusMinusAverage", name="autoPole_offset")
+    cmds.setAttr(offset + ".operation", 2)
+    cmds.connectAttr(to_mid + ".output3D", offset + ".input3D[0]")
+    cmds.connectAttr(projection + ".output", offset + ".input3D[1]")
+    nodes.append(offset)
+
+    # 长度
+    distance_node = cmds.createNode("distanceBetween", name="autoPole_length")
+    cmds.connectAttr(offset + ".output3D", distance_node + ".point1")
+    cmds.setAttr(distance_node + ".point2", 0.0, 0.0, 0.0)
+    nodes.append(distance_node)
+
+    # dir = offset / length
+    direction = cmds.createNode("multiplyDivide", name="autoPole_direction")
+    cmds.setAttr(direction + ".operation", 2)   # divide
+    cmds.connectAttr(offset + ".output3D", direction + ".input1")
+
+    for component in ("X", "Y", "Z"):
+        cmds.connectAttr(
+            distance_node + ".distance",
+            direction + ".input2{}".format(component)
+        )
+
+    nodes.append(direction)
+
+    # scaled = dir * distance
+    scaled = cmds.createNode("multiplyDivide", name="autoPole_scaled")
+    cmds.connectAttr(direction + ".output", scaled + ".input1")
+    cmds.setAttr(scaled + ".input2", distance, distance, distance)
+    nodes.append(scaled)
+
+    # pole = mid + scaled
+    final = cmds.createNode("plusMinusAverage", name="autoPole_position")
+    cmds.setAttr(final + ".operation", 1)   # sum
+    cmds.connectAttr(decomposers["mid"] + ".outputTranslate", final + ".input3D[0]")
+    cmds.connectAttr(scaled + ".output", final + ".input3D[1]")
+    nodes.append(final)
+
+    cmds.connectAttr(final + ".output3D", pole + ".translate")
+
+    return nodes
+
+
+def create_pole_display(mid, pole, name="crv_auto_pole_display"):
+    u"""创建一条连接关节和极向量的显示曲线。
+
+    两个 CV 分别由 mid 和 pole 的世界位置驱动，
+    移动任一端曲线都会跟着变。
+
+    Args:
+        mid (str): 中间关节。
+        pole (str): 极向量定位器。
+        name (str): 曲线名。
+
+    Returns:
+        str: 曲线 transform 名。
+    """
+
+    curve = cmds.curve(
+        point=[(0, 0, 0), (0, 0, 0)],
+        degree=1,
+        name=name
+    )
+
+    shape = cmds.listRelatives(curve, shapes=True)[0]
+
+    # 两端都用世界位置驱动，避免父级空间不一致
+    for index, node in enumerate((mid, pole)):
+        decompose = cmds.createNode(
+            "decomposeMatrix",
+            name="{}_cv{}".format(name, index)
+        )
+        cmds.connectAttr(node + ".worldMatrix[0]", decompose + ".inputMatrix")
+        cmds.connectAttr(
+            decompose + ".outputTranslate",
+            shape + ".cv[{}]".format(index)
+        )
+
+    # 曲线本身不参与渲染，只做视觉参考
+    cmds.setAttr(shape + ".overrideEnabled", 1)
+    cmds.setAttr(shape + ".overrideColor", 6)
+
+    return curve
+
+
 def align_pole_to_plane(start, mid, end, pole, distance=None):
     u"""把极向量对齐到关节链所在的平面。
 
