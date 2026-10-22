@@ -283,8 +283,60 @@ class JntTool(MayaQWidgetBaseMixin, QtWidgets.QWidget):
     # 创建
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def next_numbered_name(prefix):
+        u"""返回第一个未被占用的编号名称。
+
+        同一个物体上会反复吸附出很多关节点，固定从 001 开始必然撞名，
+        所以每次都从场景现状往后找空位。
+
+        Args:
+            prefix (str): 名称前缀，例如 jnt_snap。
+
+        Returns:
+            str: 可用名称，例如 jnt_snap_004。
+        """
+
+        index = 1
+
+        while True:
+            name = "{}_{:03d}".format(prefix, index)
+
+            if not cmds.objExists(name):
+                return name
+
+            index += 1
+
+    @staticmethod
+    def unique_name(name):
+        u"""名称被占用时追加序号。
+
+        Args:
+            name (str): 期望的名称。
+
+        Returns:
+            str: 可用名称。
+        """
+
+        if not cmds.objExists(name):
+            return name
+
+        index = 1
+
+        while True:
+            candidate = "{}{:03d}".format(name, index)
+
+            if not cmds.objExists(candidate):
+                return candidate
+
+            index += 1
+
     def create_snap_joints(self):
-        u"""在选中物体或组件的世界位置创建关节。"""
+        u"""在选中物体或组件的世界位置创建关节。
+
+        每个选中项建一个关节，名称从 jnt_snap_001 开始顺延，
+        已经被占用的编号会自动跳过。
+        """
 
         selection = cmds.ls(orderedSelection=True) or []
 
@@ -298,13 +350,13 @@ class JntTool(MayaQWidgetBaseMixin, QtWidgets.QWidget):
         cmds.undoInfo(openChunk=True)
 
         try:
-            for index, item in enumerate(selection, start=1):
+            for item in selection:
                 position = snap_utils.get_item_world_position(item)
 
                 if position is None:
                     continue
 
-                name = "jnt_snap_{:03d}".format(index)
+                name = self.next_numbered_name("jnt_snap")
                 jnt = jnt_utils.Jnt.create_jnt(
                     name,
                     position=position,
@@ -323,7 +375,10 @@ class JntTool(MayaQWidgetBaseMixin, QtWidgets.QWidget):
         self.status_label.setText(u"吸附创建：{} 个关节".format(len(created)))
 
     def create_child_joints(self):
-        u"""给选中对象创建同姿态的子关节。"""
+        u"""给选中对象创建同姿态的子关节。
+
+        名称按「原名 + _child」生成，重名时自动加序号。
+        """
 
         selection = cmds.ls(selection=True, long=True) or []
 
@@ -343,6 +398,8 @@ class JntTool(MayaQWidgetBaseMixin, QtWidgets.QWidget):
 
                 if not child_name.startswith("jnt_"):
                     child_name = "jnt_{}".format(child_name)
+
+                child_name = self.unique_name(child_name)
 
                 jnt = jnt_utils.Jnt.create_jnt(
                     child_name,
