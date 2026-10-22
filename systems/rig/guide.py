@@ -45,6 +45,21 @@ def template_root_name(module):
     return "grp_md_{}_guide_001".format(module)
 
 
+# 身体模板里，各部位对应的关节名片段
+# 命名来自实际模板（含原有拼写：elfbow / anklfe / upperArmd）
+body_part_chains = {
+    "arm": ("upperArmd", "elfbow", "wrist"),
+    "leg": ("upperLeg", "knee", "anklfe"),
+    "spine": (
+        "spine_guide_001",
+        "spine_guide_004",
+        "spine_guide_006",
+    ),
+    "neck": ("neck_guide_001", "neck_guide_002", "head_guide_001"),
+}
+
+
+
 class Guide(object):
     u"""一个模块的定位器模板。"""
 
@@ -168,5 +183,71 @@ class Guide(object):
 
             if locators:
                 result[side] = locators
+
+        return result
+
+    # ------------------------------------------------------------------
+    # 身体模板
+    # ------------------------------------------------------------------
+
+    def get_body_chain(self, side, part):
+        u"""从 body 模板里取一条肢体关节链。
+
+        body_guide.ma 用的是关节而不是定位器，
+        命名是 jnt_<side>_<片段>_guide_001。
+
+        Args:
+            side (str): lf / rt / md。
+            part (str): arm / leg / spine / neck。
+
+        Returns:
+            list: 关节名，按根到末端排序；缺失时返回空列表或部分结果。
+        """
+
+        pieces = body_part_chains.get(part)
+
+        if not pieces:
+            return []
+
+        result = []
+
+        for piece in pieces:
+            # spine / neck / head 的片段里已经带了完整序号
+            if piece.startswith(("spine", "neck", "head")):
+                name = "jnt_{}_{}".format(side, piece)
+            else:
+                name = "jnt_{}_{}_guide_001".format(side, piece)
+
+            if cmds.objExists(name):
+                result.append(name)
+
+        return result
+
+    def mirror_chain(self, chain):
+        u"""把一条 lf 链镜像成 rt 坐标。
+
+        用于 body 模板只有左侧的情况：创建右侧关节时按 X 取反。
+
+        Args:
+            chain (list): 左侧关节名。
+
+        Returns:
+            list: [(世界位置, 世界旋转), ...]，按链顺序。
+        """
+
+        result = []
+
+        for node in chain:
+            position = cmds.xform(
+                node, query=True, worldSpace=True, translation=True
+            )
+            rotation = cmds.xform(
+                node, query=True, worldSpace=True, rotation=True
+            )
+
+            result.append((
+                [-position[0], position[1], position[2]],
+                [rotation[0], -rotation[1], -rotation[2]],
+            ))
 
         return result
