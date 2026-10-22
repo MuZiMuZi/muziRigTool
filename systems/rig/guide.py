@@ -223,6 +223,46 @@ class Guide(object):
 
         return result
 
+    def get_body_pole(self, side, part):
+        u"""返回 body 模板里某个部位的极向量关节。
+
+        Args:
+            side (str): lf / rt / md。
+            part (str): arm / leg。
+
+        Returns:
+            str | None: 极向量关节名。
+        """
+
+        if part not in ("arm", "leg"):
+            return None
+
+        name = "jnt_{}_{}_pole_guide_001".format(side, part)
+
+        if cmds.objExists(name):
+            return name
+
+        return None
+
+    def get_body_limb(self, side, part):
+        u"""返回完整的肢体 guide：3 个关节 + 极向量。
+
+        Args:
+            side (str): lf / rt / md。
+            part (str): arm / leg。
+
+        Returns:
+            list: 4 个节点；极向量缺失时只有 3 个。
+        """
+
+        chain = self.get_body_chain(side, part)
+        pole = self.get_body_pole(side, part)
+
+        if pole:
+            chain.append(pole)
+
+        return chain
+
     def mirror_chain(self, chain):
         u"""把一条 lf 链镜像成 rt 坐标。
 
