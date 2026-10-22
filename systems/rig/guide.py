@@ -28,9 +28,94 @@ u"""Module Guide：定位器模板的导入与查询。
     locators = guide.get_locators("lf")   # [根, 中, 末端, 极向量]
 """
 
+import math
 import os
 
 from maya import cmds
+
+
+def _sub(a, b):
+    u"""向量相减。"""
+
+    return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+
+
+def _cross(a, b):
+    u"""叉乘。"""
+
+    return [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+
+
+def _length(vector):
+    u"""向量长度。"""
+
+    return math.sqrt(sum(value * value for value in vector))
+
+
+def align_pole_to_plane(start, mid, end, pole, distance=None):
+    u"""把极向量对齐到关节链所在的平面。
+
+    平面由三个关节点定义，法线是两条边的叉乘。
+    极向量放到「mid + 法线 × 距离」上，保证和三个关节共面。
+
+    法线方向沿用极向量当前的方向，不会被翻到另一侧。
+
+    Args:
+        start (str): 根关节。
+        mid (str): 中间关节。
+        end (str): 末端关节。
+        pole (str): 极向量定位器。
+        distance (float | None): 距 mid 的距离；None 表示保持当前距离。
+
+    Returns:
+        list: 极向量的新世界位置；三点共线时返回原位置。
+    """
+
+    positions = [
+        cmds.xform(node, query=True, worldSpace=True, translation=True)
+        for node in (start, mid, end)
+    ]
+
+    start_pos, mid_pos, end_pos = positions
+    pole_pos = cmds.xform(pole, query=True, worldSpace=True, translation=True)
+
+    first = _sub(mid_pos, start_pos)
+    second = _sub(end_pos, mid_pos)
+    normal = _cross(first, second)
+
+    length = _length(normal)
+
+    # 三个点共线时平面不存在，直接返回
+    if length < 1e-6:
+        return pole_pos
+
+    normal = [value / length for value in normal]
+
+    # 沿用当前方向：极向量在法线正侧就保持，负侧就翻过来
+    current = _sub(pole_pos, mid_pos)
+
+    if sum(current[index] * normal[index] for index in range(3)) < 0:
+        normal = [-value for value in normal]
+
+    if distance is None:
+        distance = _length(current)
+
+        if distance < 1e-6:
+            distance = 25.0
+
+    new_position = [
+        mid_pos[index] + normal[index] * distance
+        for index in range(3)
+    ]
+
+    cmds.xform(pole, worldSpace=True, translation=new_position)
+
+    return new_position
+
 
 
 # resources/module_guide 的绝对路径

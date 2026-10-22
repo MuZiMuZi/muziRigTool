@@ -36,7 +36,7 @@ from PySide2 import QtWidgets
 from maya import cmds
 from maya.app.general.mayaMixin import MayaQWidgetBaseMixin
 
-from ...systems.rig.guide import Guide
+from ...systems.rig.guide import Guide, align_pole_to_plane
 from ...systems.rig.module.ikfk import LimbIkFk
 from ...ui import theme
 
@@ -140,6 +140,11 @@ class LimbTool(MayaQWidgetBaseMixin, QtWidgets.QWidget):
         self.create_button.clicked.connect(self.create_from_selection)
         layout.addWidget(self.create_button)
 
+        self.align_button = QtWidgets.QPushButton(u"对齐极向量到关节平面")
+        self.align_button.setStyleSheet(theme.button_style)
+        self.align_button.clicked.connect(self.align_pole)
+        layout.addWidget(self.align_button)
+
         return group
 
     # ------------------------------------------------------------------
@@ -231,6 +236,49 @@ class LimbTool(MayaQWidgetBaseMixin, QtWidgets.QWidget):
             return
 
         self.build_chain(guides)
+
+    def align_pole(self):
+        u"""把极向量对齐到关节链平面。
+
+        两种取法：
+            选中 4 个      按选择顺序：根 / 中 / 末端 / 极向量
+            没选中         从 body 模板按方向自动取
+        """
+
+        selection = self.get_guides()
+
+        if len(selection) == 4:
+            guides = selection
+        else:
+            module = self.get_module()
+            side = self.get_side()
+
+            try:
+                body_guide = Guide("body")
+                body_guide.import_template()
+                guides = body_guide.get_body_limb(side, module)
+            except Exception as error:
+                self.status_label.setText(u"读取 guide 失败：{}".format(error))
+                return
+
+        if len(guides) != 4:
+            self.status_label.setText(
+                u"需要 4 个定位器（根 / 中 / 末端 / 极向量），当前 {} 个".format(
+                    len(guides)
+                )
+            )
+            return
+
+        try:
+            new_position = align_pole_to_plane(*guides)
+        except Exception as error:
+            cmds.warning(str(error))
+            self.status_label.setText(u"对齐失败：{}".format(error))
+            return
+
+        self.status_label.setText(
+            u"极向量已对齐：({:.1f}, {:.1f}, {:.1f})".format(*new_position)
+        )
 
     def build_chain(self, guides):
         u"""按定位器建链。"""
