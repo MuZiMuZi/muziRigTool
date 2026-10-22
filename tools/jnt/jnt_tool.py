@@ -31,6 +31,7 @@ from maya import cmds
 from maya.app.general.mayaMixin import MayaQWidgetBaseMixin
 
 from ...core.common import rename_utils
+from ...core.geometry import curve_utils
 from ...core.rigging import constraint_utils
 from ...core.rigging import jnt_utils
 from ...core.rigging import snap_utils
@@ -155,6 +156,20 @@ class JntTool(MayaQWidgetBaseMixin, QtWidgets.QWidget):
         button_row.addWidget(self.child_button)
 
         layout.addLayout(button_row)
+
+        curve_row = QtWidgets.QHBoxLayout()
+
+        self.curve_button = QtWidgets.QPushButton(u"曲线上建关节")
+        self.curve_button.setStyleSheet(theme.button_style)
+        self.curve_button.clicked.connect(self.create_joints_on_curve)
+        curve_row.addWidget(self.curve_button)
+
+        self.edge_button = QtWidgets.QPushButton(u"边上建关节")
+        self.edge_button.setStyleSheet(theme.button_style)
+        self.edge_button.clicked.connect(self.create_joints_on_edges)
+        curve_row.addWidget(self.edge_button)
+
+        layout.addLayout(curve_row)
 
         return group
 
@@ -418,6 +433,123 @@ class JntTool(MayaQWidgetBaseMixin, QtWidgets.QWidget):
             self.refresh()
 
         self.status_label.setText(u"创建子关节：{} 个".format(len(created)))
+
+    @staticmethod
+    def numbered_names(prefix, count):
+        u"""生成 count 个不冲突的编号名称。
+
+        Args:
+            prefix (str): 名称前缀。
+            count (int): 需要几个。
+
+        Returns:
+            list: 名称列表，跳过已被占用的编号。
+        """
+
+        names = []
+        index = 1
+
+        while len(names) < count:
+            name = "{}_{:03d}".format(prefix, index)
+
+            if not cmds.objExists(name):
+                names.append(name)
+
+            index += 1
+
+        return names
+
+    def create_joints_on_curve(self):
+        u"""按选中曲线的 CV 位置建关节链。
+
+        每个 CV 一个关节，按曲线顺序串成链。
+        """
+
+        selection = cmds.ls(selection=True, long=True) or []
+
+        if not selection:
+            cmds.warning(u"请选择一条或多条 NURBS 曲线。")
+            return
+
+        radius = self.radius_spin.value()
+        created = []
+
+        cmds.undoInfo(openChunk=True)
+
+        try:
+            for curve in selection:
+                try:
+                    positions = curve_utils.get_curve_cv_positions(curve)
+                except Exception as error:
+                    cmds.warning(str(error))
+                    continue
+
+                if len(positions) < 2:
+                    cmds.warning(u"曲线 CV 不足两个：{}".format(curve))
+                    continue
+
+                names = self.numbered_names("jnt_curve", len(positions))
+
+                chain = jnt_utils.JntChain.create_chain(
+                    positions,
+                    names=names,
+                    radius=radius
+                )
+                created.extend(chain.names)
+        except Exception as error:
+            cmds.warning(str(error))
+        finally:
+            cmds.undoInfo(closeChunk=True)
+
+        if created:
+            cmds.select(created, replace=True)
+            self.refresh()
+
+        self.status_label.setText(u"曲线上建关节：{} 个".format(len(created)))
+
+    def create_joints_on_edges(self):
+        u"""把选中的多边形边转成曲线，再按 CV 建关节链。
+
+        临时曲线用完就删，只留关节。
+        """
+
+        radius = self.radius_spin.value()
+        created = []
+        curve = None
+
+        cmds.undoInfo(openChunk=True)
+
+        try:
+            curve_name = self.next_numbered_name("crv_edge_jnt")
+            curve = curve_utils.create_curve_from_selected_edges(curve_name)
+
+            positions = curve_utils.get_curve_cv_positions(curve)
+
+            if len(positions) < 2:
+                cmds.warning(u"转换出的曲线 CV 不足两个。")
+            else:
+                names = self.numbered_names("jnt_edge", len(positions))
+
+                chain = jnt_utils.JntChain.create_chain(
+                    positions,
+                    names=names,
+                    radius=radius
+                )
+                created.extend(chain.names)
+        except Exception as error:
+            cmds.warning(str(error))
+        finally:
+            # 临时曲线用完删掉，不留在场景里
+            if curve is not None and cmds.objExists(curve):
+                cmds.delete(curve)
+
+            cmds.undoInfo(closeChunk=True)
+
+        if created:
+            cmds.select(created, replace=True)
+            self.refresh()
+
+        self.status_label.setText(u"边上建关节：{} 个".format(len(created)))
 
     # ------------------------------------------------------------------
     # 编辑
