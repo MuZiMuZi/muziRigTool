@@ -46,10 +46,10 @@ def template_root_name(module):
 
 
 # 身体模板里，各部位对应的关节名片段
-# 命名来自实际模板（含原有拼写：elfbow / anklfe / upperArmd）
+# 名字按规范拼写：upperArm / elbow / ankle
 body_part_chains = {
-    "arm": ("upperArmd", "elfbow", "wrist"),
-    "leg": ("upperLeg", "knee", "anklfe"),
+    "arm": ("upperArm", "elbow", "wrist"),
+    "leg": ("upperLeg", "knee", "ankle"),
     "spine": (
         "spine_guide_001",
         "spine_guide_004",
