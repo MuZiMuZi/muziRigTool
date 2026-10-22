@@ -27,11 +27,13 @@ import os
 import maya.cmds as cmds
 
 
-# 控制器层级，从内到外。
-LAYERS = ("offset", "connect", "space", "driven", "zero")
+# 控制器层级，从内到外排列。
+# create_hierarchy 会按这个顺序，一层层把 ctrl 往外包。
+layers = ("offset", "connect", "space", "driven", "zero")
 
-# 形状的基准朝向是 X+；其他轴向通过旋转 CV 得到。
-AXIS_ROTATION = {
+# 形状库里的曲线都按 X+ 朝向制作。
+# 其他朝向不需要另做一套形状，直接把这些 CV 旋转过去即可。
+axis_rotation = {
     "X+": (0.0, 0.0, 0.0),
     "X-": (0.0, 180.0, 0.0),
     "Y+": (0.0, 0.0, 90.0),
@@ -42,17 +44,31 @@ AXIS_ROTATION = {
 
 
 def _rotate_point(point, degrees):
-    u"""按 XYZ 欧拉角旋转一个点。"""
+    u"""按 XYZ 欧拉角旋转一个点。
+
+    Maya 的旋转顺序是 X → Y → Z，这里按同样顺序依次套用三个旋转矩阵。
+    """
 
     rad_x, rad_y, rad_z = [math.radians(value) for value in degrees]
     x, y, z = point
 
-    # 绕 X
-    y, z = y * math.cos(rad_x) - z * math.sin(rad_x), y * math.sin(rad_x) + z * math.cos(rad_x)
-    # 绕 Y
-    x, z = x * math.cos(rad_y) + z * math.sin(rad_y), -x * math.sin(rad_y) + z * math.cos(rad_y)
-    # 绕 Z
-    x, y = x * math.cos(rad_z) - y * math.sin(rad_z), x * math.sin(rad_z) + y * math.cos(rad_z)
+    # 绕 X 轴旋转：Y / Z 变化
+    y, z = (
+        y * math.cos(rad_x) - z * math.sin(rad_x),
+        y * math.sin(rad_x) + z * math.cos(rad_x)
+    )
+
+    # 绕 Y 轴旋转：X / Z 变化
+    x, z = (
+        x * math.cos(rad_y) + z * math.sin(rad_y),
+        -x * math.sin(rad_y) + z * math.cos(rad_y)
+    )
+
+    # 绕 Z 轴旋转：X / Y 变化
+    x, y = (
+        x * math.cos(rad_z) - y * math.sin(rad_z),
+        x * math.sin(rad_z) + y * math.cos(rad_z)
+    )
 
     return x, y, z
 
@@ -60,7 +76,8 @@ def _rotate_point(point, degrees):
 class Ctrl(object):
     u"""单个 Maya 控制器。"""
 
-    # 形状库目录。
+    # 形状库目录：从本文件往上三层到包根，再进 resources。
+    # core/rigging/ctrl_utils.py -> core -> muziRigTool
     shape_dir = os.path.join(
         os.path.dirname(
             os.path.dirname(
@@ -76,6 +93,8 @@ class Ctrl(object):
     def __init__(self, name):
         u"""引用一个已经存在的控制器。
 
+        只做引用，不创建节点。要创建请用 create_ctrl()。
+
         Args:
             name (str): 控制器名称。
 
@@ -87,6 +106,7 @@ class Ctrl(object):
         if not cmds.objExists(name):
             raise RuntimeError(u"控制器不存在：{}".format(name))
 
+        # 控制器必须是 transform；curve / joint 之类的节点不能当控制器用。
         if cmds.nodeType(name) != "transform":
             raise TypeError(u"{} 不是 transform 节点。".format(name))
 
@@ -105,7 +125,9 @@ class Ctrl(object):
         u"""创建一个控制器。
 
         执行顺序固定：形状 → 颜色 → 大小 → 轴向 → 匹配 → 层级。
-        形状必须最先设置，因为替换形状会覆盖之前的显示设置。
+
+        形状必须最先设置：set_shape 会删掉旧 shape 再建新的，
+        如果先设颜色或大小，换形状之后这些显示设置会全部丢失。
 
         Args:
             name (str): 控制器名称，必须尚未存在。
@@ -126,14 +148,19 @@ class Ctrl(object):
         if cmds.objExists(name):
             raise RuntimeError(u"节点已经存在：{}".format(name))
 
+        # 用 createNode 而不是 cmds.circle 等命令：
+        # createNode 不会改变当前选择，也不会自动挂到别的节点下面。
         cmds.createNode("transform", name=name)
 
         ctrl = cls(name)
+
+        # 顺序不能调换，理由见 docstring。
         ctrl.set_shape(shape)
         ctrl.set_color(color)
         ctrl.set_size(size)
         ctrl.set_axis(axis)
 
+        # 匹配目标放在形状设置之后：形状是本地数据，不影响位置。
         if target is not None:
             ctrl.match_transform(target)
 
@@ -169,7 +196,11 @@ class Ctrl(object):
             return json.load(handle)
 
     def get_shapes(self):
-        u"""返回控制器下的所有曲线形状。"""
+        u"""返回控制器下的所有曲线形状。
+
+        noIntermediate=True 用来排除曲线自带的 intermediate shape，
+        否则同一个形状会被返回两次。
+        """
 
         return cmds.listRelatives(
             self.name,
@@ -180,17 +211,24 @@ class Ctrl(object):
     def set_shape(self, shape_name):
         u"""替换控制器形状。
 
+        一个控制器可以由多条曲线组成（例如十字 + 外圈），
+        所以 JSON 里是一个列表，每条曲线单独创建。
+
         Args:
             shape_name (str): 形状库名称。
         """
 
         data = self.load_shape(shape_name)
 
+        # 先删掉旧形状，避免新旧重叠。
         for old_shape in self.get_shapes():
             cmds.delete(old_shape)
 
         for entry in data:
             points = entry["points"]
+
+            # JSON 里的 points 是扁平数组 [x, y, z, x, y, z, ...]，
+            # 每三个一组还原成一个坐标点。
             xyz = [
                 (points[index], points[index + 1], points[index + 2])
                 for index in range(0, len(points), 3)
@@ -201,7 +239,8 @@ class Ctrl(object):
                 degree=entry.get("degree", 3)
             )
 
-            # 周期曲线不能直接带 knot 创建，先建开放曲线再闭合。
+            # 周期曲线（圆环、方形等闭合形状）不能用 cmds.curve 的 knot 参数直接创建，
+            # Maya 会报「控制点太少」。先建开放曲线，再用 closeCurve 转成周期曲线。
             if entry.get("periodic"):
                 cmds.closeCurve(
                     curve,
@@ -210,6 +249,8 @@ class Ctrl(object):
                     replaceOriginal=True
                 )
 
+            # 曲线创建时是一个独立 transform，
+            # 这里把它的 shape 移到控制器下面，再删掉多余的空 transform。
             shape = cmds.listRelatives(curve, shapes=True)[0]
             cmds.parent(shape, self.name, shape=True, relative=True)
             cmds.delete(curve)
@@ -230,6 +271,7 @@ class Ctrl(object):
 
         color = int(color)
 
+        # Maya 的 override color 索引固定是 0 ~ 31。
         if not 0 <= color <= 31:
             raise ValueError(u"color 必须在 0 ~ 31 之间，收到：{}".format(color))
 
@@ -240,7 +282,8 @@ class Ctrl(object):
     def set_size(self, size):
         u"""按倍率缩放形状的 CV。
 
-        只缩放曲线点，不修改 transform 的 scale，避免影响子物体。
+        只缩放曲线点，不修改 transform 的 scale。
+        如果改 scale，控制器下方的子物体也会跟着变大，这不是想要的效果。
 
         Args:
             size (float): 缩放倍率。
@@ -250,6 +293,7 @@ class Ctrl(object):
             raise ValueError(u"size 必须大于 0，收到：{}".format(size))
 
         for shape in self.get_shapes():
+            # 逐个 CV 读写坐标，坐标是 objectSpace（相对于控制器自身）。
             for cv in cmds.ls(shape + ".cv[*]", flatten=True):
                 position = cmds.xform(
                     cv,
@@ -266,6 +310,9 @@ class Ctrl(object):
     def set_axis(self, axis):
         u"""按绝对轴向旋转形状的 CV。
 
+        和 set_size 同理：旋转曲线点而不是 transform，
+        这样控制器的 rotate 保持为 0，动画数据从干净的零值开始。
+
         Args:
             axis (str): X+ / X- / Y+ / Y- / Z+ / Z-。
 
@@ -273,16 +320,17 @@ class Ctrl(object):
             ValueError: axis 不在支持范围内。
         """
 
-        if axis not in AXIS_ROTATION:
+        if axis not in axis_rotation:
             raise ValueError(
                 u"axis 只能是 {}，收到：{}".format(
-                    " / ".join(AXIS_ROTATION),
+                    " / ".join(axis_rotation),
                     axis
                 )
             )
 
-        rotation = AXIS_ROTATION[axis]
+        rotation = axis_rotation[axis]
 
+        # X+ 是基准，不需要旋转，直接返回省一次 CV 遍历。
         if rotation == (0.0, 0.0, 0.0):
             return
 
@@ -319,8 +367,11 @@ class Ctrl(object):
                          sub_color=17, sub_size=0.7):
         u"""创建完整控制器层级。
 
-        从 ctrl 向外依次包上 offset / connect / space / driven / zero，
-        然后在 ctrl 下方创建 subctrl 与 output。
+        从 ctrl 开始，由内向外一层层包：
+        ctrl → offset → connect → space → driven → zero
+
+        之所以从内往外建：每建一层，只需要把「当前最外层」挂到「新组」下面，
+        逻辑是单向的；如果从外往里建，每次都要去找内层的父节点。
 
         重复执行安全：已存在的层级会被复用，不会重复包裹。
 
@@ -336,7 +387,7 @@ class Ctrl(object):
 
         current = self.name
 
-        for layer in LAYERS:
+        for layer in layers:
             group = self._ensure_parent(current, layer)
             current = group
 
@@ -352,26 +403,40 @@ class Ctrl(object):
         return current
 
     def _ensure_parent(self, child, layer):
-        u"""确保 child 的父级是名为 <layer>_... 的组。"""
+        u"""确保 child 的父级是指定层的组。
 
-        # 组名始终从主控制器名生成，不能跟着 child 变。
+        「确保」= 有就复用、没有就建、挂错了就纠正，
+        所以这个方法执行一次和十次的结果完全一样。
+        """
+
+        # 组名始终从主控制器名生成。
+        # 不能写成 child.replace(...)：第二次循环时 child 已经是 offset_xxx，
+        # 里面已经没有 "ctrl_" 了，替换会失效。
         group_name = self.name.replace("ctrl_", layer + "_", 1)
 
         if not cmds.objExists(group_name):
+            # 组不存在：新建一个空组，并对齐到当前节点，保证不动位置。
             group = cmds.group(empty=True, name=group_name)
             cmds.matchTransform(group, child)
         else:
+            # 组已存在：直接复用，不重复创建。
             group = group_name
 
         current_parent = cmds.listRelatives(child, parent=True)
 
+        # 父级不是这个组时才重新挂接。
+        # absolute=True 保证挂接过程中世界位置不变。
         if not current_parent or current_parent[0] != group:
             cmds.parent(child, group, absolute=True)
 
         return group
 
     def _ensure_output(self):
-        u"""确保 ctrl 下方有一个 output 组。"""
+        u"""确保 ctrl 下方有一个 output 组。
+
+        output 用来放子物体。它和 subctrl 是兄弟关系：
+        subctrl 被隐藏时，output 下面的物体不会被一起隐藏。
+        """
 
         output_name = self.name.replace("ctrl_", "output_", 1)
 
@@ -391,6 +456,10 @@ class Ctrl(object):
     def create_sub_ctrl(self, shape="circle", color=17, size=0.7):
         u"""创建次级控制器，并把变换连接到 output。
 
+        为什么是连接而不是父子关系：
+        父子关系下，隐藏 subctrl 会连带隐藏它下面的所有子物体；
+        兄弟 + 属性连接则只共享变换，隐藏互不影响。
+
         Args:
             shape (str): 形状名称。
             color (int): 颜色索引。
@@ -405,6 +474,7 @@ class Ctrl(object):
         if cmds.objExists(sub_name):
             sub = Ctrl(sub_name)
         else:
+            # hierarchy=False：subctrl 只是 ctrl 下面的一层，不需要自己再包八层。
             sub = Ctrl.create_ctrl(
                 sub_name,
                 shape=shape,
@@ -414,8 +484,11 @@ class Ctrl(object):
             )
             cmds.parent(sub.name, self.name, absolute=True)
 
+        # 确保 output 已经存在，否则下面的连接没有目标。
         output_name = self._ensure_output()
 
+        # 把 subctrl 的变换实时传给 output。
+        # 先判断是否已经连过，避免重复执行时反复连接产生警告。
         for attribute in ("translate", "rotate", "scale", "rotateOrder"):
             source = sub.name + "." + attribute
             target = output_name + "." + attribute
