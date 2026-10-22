@@ -10,6 +10,7 @@ from maya.app.general.mayaMixin import MayaQWidgetBaseMixin
 from ...core.rigging.ctrl_utils import Ctrl
 
 
+
 # Maya 的 32 个 override color（RGB 0~1）
 # 数据来自旧库 ui/widgets/color_index_slider.py，经过生产验证。
 maya_colors = {
@@ -188,17 +189,94 @@ class CreateCtrlWindow(MayaQWidgetBaseMixin, QtWidgets.QWidget):
         return group
 
     def build_shape_section(self):
-        u"""形状区块。"""
+        u"""形状区块：按类型分页，每页是图标网格。"""
 
         group = QtWidgets.QGroupBox(u"形状")
-        layout = QtWidgets.QHBoxLayout(group)
+        layout = QtWidgets.QVBoxLayout(group)
 
-        self.shape_combo = QtWidgets.QComboBox()
-        self.shape_combo.addItems(self.get_shape_names())
-        self.shape_combo.setCurrentText("circle")
-        layout.addWidget(self.shape_combo)
+        self.shape_tabs = QtWidgets.QTabWidget()
+
+        for title, names in self.get_shape_groups():
+            self.shape_tabs.addTab(self.build_shape_page(names), title)
+
+        layout.addWidget(self.shape_tabs)
 
         return group
+
+    def build_shape_page(self, names):
+        u"""为一种类型建一页图标列表。
+
+        Args:
+            names (list): 该类型下的形状名称。
+
+        Returns:
+            QtWidgets.QListWidget: 图标网格。
+        """
+
+        widget = QtWidgets.QListWidget()
+        widget.setViewMode(QtWidgets.QListView.IconMode)
+        widget.setIconSize(QtCore.QSize(52, 52))
+        widget.setGridSize(QtCore.QSize(74, 80))
+        widget.setMovement(QtWidgets.QListView.Static)
+        widget.setResizeMode(QtWidgets.QListView.Adjust)
+        widget.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        widget.setFixedHeight(180)
+
+        for name in names:
+            item = QtWidgets.QListWidgetItem()
+            item.setIcon(
+                QtGui.QIcon(os.path.join(Ctrl.shape_dir, name + ".png"))
+            )
+            item.setText(name)
+            item.setToolTip(name)
+            item.setData(QtCore.Qt.UserRole, name)
+            item.setTextAlignment(QtCore.Qt.AlignHCenter | QtCore.Qt.AlignBottom)
+            widget.addItem(item)
+
+        if widget.count():
+            widget.setCurrentRow(0)
+
+        return widget
+
+    def get_shape_name(self):
+        u"""返回当前页选中的形状名。"""
+
+        widget = self.shape_tabs.currentWidget()
+        item = widget.currentItem() if widget else None
+
+        return item.data(QtCore.Qt.UserRole) if item else "circle"
+
+    @staticmethod
+    def get_shape_groups():
+        u"""把形状按名称前缀分成几类。
+
+        Returns:
+            list: [(分类名, [形状名, ...]), ...]
+        """
+
+        groups = [
+            (u"箭头", []),
+            (u"圆形", []),
+            (u"方形", []),
+            (u"多边形", []),
+            (u"其他", []),
+        ]
+
+        polygon_names = ("hex", "octagon_bevel", "triangle_round")
+
+        for name in CreateCtrlWindow.get_shape_names():
+            if name.startswith("arrow"):
+                groups[0][1].append(name)
+            elif name.startswith("circle"):
+                groups[1][1].append(name)
+            elif name.startswith("square") or name.startswith("slider_square"):
+                groups[2][1].append(name)
+            elif name in polygon_names:
+                groups[3][1].append(name)
+            else:
+                groups[4][1].append(name)
+
+        return [item for item in groups if item[1]]
 
     @staticmethod
     def get_shape_names():
@@ -240,6 +318,10 @@ class CreateCtrlWindow(MayaQWidgetBaseMixin, QtWidgets.QWidget):
         group = QtWidgets.QGroupBox(u"操作")
         layout = QtWidgets.QVBoxLayout(group)
 
+        self.hierarchy_check = QtWidgets.QCheckBox(u"创建完整层级（含 subctrl 与 output）")
+        self.hierarchy_check.setChecked(True)
+        layout.addWidget(self.hierarchy_check)
+
         self.create_button = QtWidgets.QPushButton(u"创建")
         self.create_button.clicked.connect(self.create_button_click)
         layout.addWidget(self.create_button)
@@ -258,9 +340,10 @@ class CreateCtrlWindow(MayaQWidgetBaseMixin, QtWidgets.QWidget):
         try:
             ctrl = Ctrl.create_ctrl(
                 name,
-                shape=self.shape_combo.currentText(),
+                shape=self.get_shape_name(),
                 color=self.color_picker.ctrl_color,
-                size=self.size_picker.ctrl_size
+                size=self.size_picker.ctrl_size,
+                hierarchy=self.hierarchy_check.isChecked()
             )
         except Exception as error:
             # 失败时把原因打印出来，不弹窗打断操作。
