@@ -1,13 +1,11 @@
 # coding=utf-8
-u"""IK/FK 四肢模块（arm / leg 共用）。
+u"""IK/FK 四肢模块（通用基类）。
 
 三链结构：
 
-    bp 关节（定位，隐藏）
-        └─ 只用于创建时定位，不参与驱动
-
-    ik 关节链（隐藏）← ikHandle 驱动
-    fk 关节链（隐藏）← FK 控制器约束
+    bp 关节（定位，隐藏）        只用于创建时定位，不参与驱动
+    ik 关节链（隐藏）            ikHandle 驱动
+    fk 关节链（隐藏）            FK 控制器约束
 
     ik 关节 ─┐
              ├─ parentConstraint → deform 关节（蒙皮用）
@@ -25,21 +23,11 @@ u"""IK/FK 四肢模块（arm / leg 共用）。
 
 Guide 顺序（4 个）：
 
-    [0] 根关节        upr
-    [1] 中间关节      mid
-    [2] 末端关节      end
-    [3] 极向量        pole
+    [0] 根关节 / [1] 中间关节 / [2] 末端关节 / [3] 极向量
 
-极向量位置由第 4 个 Guide 直接决定，不从关节位置推算——
-骨架模板导入时就该带着它，动画师摆在哪就是哪。
+极向量位置由第 4 个 Guide 直接决定，模板导入时就该带着它。
 
-结构示例（arm）：
-
-    grp_lf_arm_jnt_001
-        ├─ jnt_lf_arm_bind_001~003     deform，蒙皮用
-        ├─ jnt_lf_arm_bp_001~003       bp，隐藏
-        ├─ jnt_lf_arm_ik_001~003       ik，隐藏
-        └─ jnt_lf_arm_fk_001~003       fk，隐藏
+Arm / Leg 继承这个类，只覆盖默认配置。
 """
 
 from maya import cmds
@@ -48,14 +36,14 @@ from ....core.common.name_utils import Name
 from .base import RigModule
 
 
-class LimbIkFk(RigModule):
-    u"""IK/FK 四肢：三链结构。"""
+class LimbConfig(object):
+    u"""四肢的显示配置。
+
+    把这些从 __init__ 参数里拆出来，Arm / Leg 才能只写差异。
+    """
 
     def __init__(
         self,
-        module="arm",
-        side="md",
-        guides=None,
         fk_shape="circle",
         ik_shape="cube",
         pole_shape="sphere",
@@ -63,7 +51,27 @@ class LimbIkFk(RigModule):
         ik_color=13,
         pole_color=6,
         size=1.0,
-        axis="X+",
+        axis="X+"
+    ):
+        self.fk_shape = fk_shape
+        self.ik_shape = ik_shape
+        self.pole_shape = pole_shape
+        self.fk_color = fk_color
+        self.ik_color = ik_color
+        self.pole_color = pole_color
+        self.size = size
+        self.axis = axis
+
+
+class LimbIkFk(RigModule):
+    u"""IK/FK 四肢：三链结构。"""
+
+    def __init__(
+        self,
+        module="limb",
+        side="md",
+        guides=None,
+        config=None,
         jnt_parent=None,
         ctrl_parent=None
     ):
@@ -75,34 +83,22 @@ class LimbIkFk(RigModule):
             ctrl_parent=ctrl_parent
         )
 
-        self.fk_shape = fk_shape
-        self.ik_shape = ik_shape
-        self.pole_shape = pole_shape
-        self.fk_color = fk_color
-        self.ik_color = ik_color
-        self.pole_color = pole_color
-        self.size = size
-        self.axis = axis
+        self.config = config or LimbConfig()
 
-        # 四套关节名
+        # 名称
         self.deform_names = []
         self.bp_names = []
         self.ik_jnt_names = []
         self.fk_jnt_names = []
-
-        # 控制器
         self.fk_ctrl_names = []
         self.ik_ctrl_name = ""
         self.pole_ctrl_name = ""
-
-        # 约束
         self.fk_drive_constraint_names = []
         self.blend_constraint_names = []
         self.pole_constraint_name = ""
-
         self.ik_handle_name = ""
 
-        # Python 侧对象
+        # 场景对象
         self.deform_joints = []
         self.bp_joints = []
         self.ik_joints = []
@@ -112,79 +108,8 @@ class LimbIkFk(RigModule):
         self.pole_ctrl = None
 
     # ------------------------------------------------------------------
-    # 名称
+    # Guide
     # ------------------------------------------------------------------
-
-    def build_names(self):
-        u"""生成四套关节和控制器、约束的固定名称。
-
-        guide_list 是 4 个（3 关节 + 1 极向量），
-        关节和控制器只按前 3 个算，所以 count 单独减一。
-        """
-
-        count = len(self.guide_list) - 1
-
-        self.deform_names = [
-            Name(type="jnt", side=self.side, part=self.module,
-                 function="bind", index=index).name
-            for index in range(1, count + 1)
-        ]
-
-        self.bp_names = [
-            Name(type="jnt", side=self.side, part=self.module,
-                 function="bp", index=index).name
-            for index in range(1, count + 1)
-        ]
-
-        self.ik_jnt_names = [
-            Name(type="jnt", side=self.side, part=self.module,
-                 function="ik", index=index).name
-            for index in range(1, count + 1)
-        ]
-
-        self.fk_jnt_names = [
-            Name(type="jnt", side=self.side, part=self.module,
-                 function="fk", index=index).name
-            for index in range(1, count + 1)
-        ]
-
-        self.fk_ctrl_names = [
-            Name(type="ctrl", side=self.side, part=self.module,
-                 function="fk", index=index).name
-            for index in range(1, count + 1)
-        ]
-
-        self.ik_ctrl_name = Name(
-            type="ctrl", side=self.side, part=self.module,
-            function="ik", index=1
-        ).name
-
-        self.pole_ctrl_name = Name(
-            type="ctrl", side=self.side, part=self.module,
-            function="pole", index=1
-        ).name
-
-        self.fk_drive_constraint_names = [
-            Name(type="cons", side=self.side, part=self.module,
-                 function="fkdrive", index=index).name
-            for index in range(1, count + 1)
-        ]
-
-        self.blend_constraint_names = [
-            Name(type="cons", side=self.side, part=self.module,
-                 function="blend", index=index).name
-            for index in range(1, count + 1)
-        ]
-
-        self.pole_constraint_name = Name(
-            type="cons", side=self.side, part=self.module,
-            function="pole", index=1
-        ).name
-
-        self.ik_handle_name = Name(
-            type="ikHandle", side=self.side, part=self.module,
-            function="main", index=1
-        ).name
 
     def get_guides(self):
         u"""读取 Guide 并生成名称。
@@ -205,24 +130,128 @@ class LimbIkFk(RigModule):
         return self.guide_list
 
     # ------------------------------------------------------------------
+    # 名称
+    # ------------------------------------------------------------------
+
+    def build_names(self):
+        u"""生成所有固定名称。"""
+
+        self.build_joint_names()
+        self.build_ctrl_names()
+        self.build_constraint_names()
+
+    def build_joint_names(self):
+        u"""四套关节名。"""
+
+        count = len(self.guide_list) - 1
+
+        def names(function):
+            return [
+                Name(
+                    type="jnt",
+                    side=self.side,
+                    part=self.module,
+                    function=function,
+                    index=index
+                ).name
+                for index in range(1, count + 1)
+            ]
+
+        self.deform_names = names("bind")
+        self.bp_names = names("bp")
+        self.ik_jnt_names = names("ik")
+        self.fk_jnt_names = names("fk")
+
+    def build_ctrl_names(self):
+        u"""控制器名。"""
+
+        count = len(self.guide_list) - 1
+
+        self.fk_ctrl_names = [
+            Name(
+                type="ctrl",
+                side=self.side,
+                part=self.module,
+                function="fk",
+                index=index
+            ).name
+            for index in range(1, count + 1)
+        ]
+
+        self.ik_ctrl_name = Name(
+            type="ctrl", side=self.side, part=self.module,
+            function="ik", index=1
+        ).name
+
+        self.pole_ctrl_name = Name(
+            type="ctrl", side=self.side, part=self.module,
+            function="pole", index=1
+        ).name
+
+    def build_constraint_names(self):
+        u"""约束和 ikHandle 名。"""
+
+        count = len(self.guide_list) - 1
+
+        self.fk_drive_constraint_names = [
+            Name(
+                type="cons",
+                side=self.side,
+                part=self.module,
+                function="fkdrive",
+                index=index
+            ).name
+            for index in range(1, count + 1)
+        ]
+
+        self.blend_constraint_names = [
+            Name(
+                type="cons",
+                side=self.side,
+                part=self.module,
+                function="blend",
+                index=index
+            ).name
+            for index in range(1, count + 1)
+        ]
+
+        self.pole_constraint_name = Name(
+            type="cons", side=self.side, part=self.module,
+            function="pole", index=1
+        ).name
+
+        self.ik_handle_name = Name(
+            type="ikHandle", side=self.side, part=self.module,
+            function="main", index=1
+        ).name
+
+    # ------------------------------------------------------------------
     # 创建关节
     # ------------------------------------------------------------------
 
     def create_joints(self):
-        u"""创建四套关节：deform / bp / ik / fk。
+        u"""创建 deform 关节和两套驱动关节。"""
 
-        只处理前 3 个 Guide，第 4 个是极向量位置。
-        """
+        self.create_deform_joints()
+        self.create_driver_joints()
+
+    def create_deform_joints(self):
+        u"""deform 关节：蒙皮用，可见。"""
 
         self.deform_joints = []
+
+        for index, guide in enumerate(self.guide_list[:3]):
+            jnt = self.create_joint(self.deform_names[index], guide=guide)
+            self.deform_joints.append(jnt)
+
+    def create_driver_joints(self):
+        u"""bp / ik / fk 三套驱动关节，全部隐藏。"""
+
         self.bp_joints = []
         self.ik_joints = []
         self.fk_joints = []
 
         for index, guide in enumerate(self.guide_list[:3]):
-            self.deform_joints.append(
-                self.create_joint(self.deform_names[index], guide=guide)
-            )
             self.bp_joints.append(
                 self.create_joint(self.bp_names[index], guide=guide)
             )
@@ -233,7 +262,6 @@ class LimbIkFk(RigModule):
                 self.create_joint(self.fk_jnt_names[index], guide=guide)
             )
 
-        # bp / ik / fk 都是中间层，隐藏起来
         for jnt in self.bp_joints + self.ik_joints + self.fk_joints:
             cmds.setAttr(jnt.name + ".visibility", 0)
 
@@ -242,11 +270,13 @@ class LimbIkFk(RigModule):
     # ------------------------------------------------------------------
 
     def create_ctrls(self):
-        u"""FK 控制器链 + IK 末端控制器 + 极向量控制器。
+        u"""FK 控制器链 + IK 控制器 + 极向量控制器。"""
 
-        FK 和 IK 控制器按前 3 个 Guide 定位，
-        极向量控制器直接放在第 4 个 Guide 的位置。
-        """
+        self.create_fk_ctrls()
+        self.create_ik_ctrls()
+
+    def create_fk_ctrls(self):
+        u"""每个关节一个 FK 控制器。"""
 
         self.fk_ctrls = []
 
@@ -254,31 +284,35 @@ class LimbIkFk(RigModule):
             ctrl = self.create_ctrl(
                 self.fk_ctrl_names[index],
                 guide=guide,
-                shape=self.fk_shape,
-                color=self.fk_color,
-                size=self.size,
-                axis=self.axis,
+                shape=self.config.fk_shape,
+                color=self.config.fk_color,
+                size=self.config.size,
+                axis=self.config.axis,
                 hierarchy=True
             )
             self.fk_ctrls.append(ctrl)
 
-        positions = [
-            cmds.xform(guide, query=True, worldSpace=True, translation=True)
-            for guide in self.guide_list[:3]
-        ]
+    def create_ik_ctrls(self):
+        u"""末端 IK 控制器 + 极向量控制器。"""
 
-        # IK 末端控制器：放在 end 关节位置
+        end_position = cmds.xform(
+            self.guide_list[2],
+            query=True,
+            worldSpace=True,
+            translation=True
+        )
+
         self.ik_ctrl = self.create_ctrl(
             self.ik_ctrl_name,
-            shape=self.ik_shape,
-            color=self.ik_color,
-            size=self.size,
-            axis=self.axis,
+            shape=self.config.ik_shape,
+            color=self.config.ik_color,
+            size=self.config.size,
+            axis=self.config.axis,
             hierarchy=True
         )
-        cmds.xform(self.ik_ctrl.name, worldSpace=True, translation=positions[2])
+        cmds.xform(self.ik_ctrl.name, worldSpace=True, translation=end_position)
 
-        # 极向量控制器：直接用 Guide 的位置，不做推算
+        # 极向量直接用第 4 个 Guide 的位置，不做推算
         pole_position = cmds.xform(
             self.guide_list[3],
             query=True,
@@ -288,10 +322,10 @@ class LimbIkFk(RigModule):
 
         self.pole_ctrl = self.create_ctrl(
             self.pole_ctrl_name,
-            shape=self.pole_shape,
-            color=self.pole_color,
-            size=self.size * 0.5,
-            axis=self.axis,
+            shape=self.config.pole_shape,
+            color=self.config.pole_color,
+            size=self.config.size * 0.5,
+            axis=self.config.axis,
             hierarchy=True
         )
         cmds.xform(self.pole_ctrl.name, worldSpace=True, translation=pole_position)
@@ -301,25 +335,34 @@ class LimbIkFk(RigModule):
     # ------------------------------------------------------------------
 
     def setup_hierarchy(self):
-        u"""四套关节各自成链，控制器按 FK/IK 分开放。"""
+        u"""关节成链、FK 控制器成链、IK 控制器平铺。"""
 
         super(LimbIkFk, self).setup_hierarchy()
 
-        joint_chains = (
+        self.chain_joints()
+        self.chain_fk_ctrls()
+        self.place_ik_ctrls()
+
+    def chain_joints(self):
+        u"""四套关节各自串成链。"""
+
+        chains = (
             self.deform_joints,
             self.bp_joints,
             self.ik_joints,
             self.fk_joints,
         )
 
-        for chain in joint_chains:
+        for chain in chains:
             parent = self.jnt_master_grp
 
             for jnt in chain:
                 cmds.parent(jnt.name, parent, absolute=True)
                 parent = jnt.name
 
-        # FK 控制器链
+    def chain_fk_ctrls(self):
+        u"""FK 控制器的 zero 组挂到上一个 output 下。"""
+
         parent = self.ctrl_master_grp
 
         for ctrl in self.fk_ctrls:
@@ -327,7 +370,9 @@ class LimbIkFk(RigModule):
             cmds.parent(zero_grp, parent, absolute=True)
             parent = ctrl.get_output()
 
-        # IK 和极向量平铺
+    def place_ik_ctrls(self):
+        u"""IK 和极向量控制器平铺在 ctrl 组下。"""
+
         for ctrl in (self.ik_ctrl, self.pole_ctrl):
             zero_grp = ctrl.name.replace("ctrl_", "zero_", 1)
             cmds.parent(zero_grp, self.ctrl_master_grp, absolute=True)
@@ -337,23 +382,38 @@ class LimbIkFk(RigModule):
     # ------------------------------------------------------------------
 
     def connect_rig(self):
-        u"""FK 控制器驱动 fk 关节，ikHandle 驱动 ik 关节，再混合到 deform。"""
+        u"""建驱动关系。"""
 
-        # 1. FK 控制器驱动 fk 关节链
-        #    bp 关节只用于创建时定位，不参与驱动——
-        #    如果 bp 也约束 fk 关节，两套约束会把关节钉在原地。
+        self.create_fk_drivers()
+        self.create_ik_handle()
+        self.create_blend_constraints()
+        self.setup_switch()
+
+        return self.ik_handle_name
+
+    def create_fk_drivers(self):
+        u"""FK 控制器驱动 fk 关节。
+
+        bp 关节只用于创建时定位，不参与驱动——
+        如果 bp 也约束 fk 关节，两套约束会把关节钉在原地。
+        """
+
         for index in range(len(self.deform_joints)):
             constraint_name = self.fk_drive_constraint_names[index]
 
-            if not cmds.objExists(constraint_name):
-                cmds.parentConstraint(
-                    self.fk_ctrl_names[index],
-                    self.fk_jnt_names[index],
-                    maintainOffset=True,
-                    name=constraint_name
-                )
+            if cmds.objExists(constraint_name):
+                continue
 
-        # 2. ikHandle 建在 ik 链上
+            cmds.parentConstraint(
+                self.fk_ctrl_names[index],
+                self.fk_jnt_names[index],
+                maintainOffset=True,
+                name=constraint_name
+            )
+
+    def create_ik_handle(self):
+        u"""在 ik 链上建 ikHandle，挂到 IK 控制器下。"""
+
         ik_handle = cmds.ikHandle(
             name=self.ik_handle_name,
             startJoint=self.ik_jnt_names[0],
@@ -361,10 +421,9 @@ class LimbIkFk(RigModule):
             solver="ikRPsolver"
         )
 
-        # ikHandle 命令没有 parent 参数，建完再挂到 IK 控制器下
+        # ikHandle 命令没有 parent 参数，建完再挂
         cmds.parent(ik_handle[0], self.ik_ctrl.name, absolute=True)
 
-        # 3. 极向量约束
         if not cmds.objExists(self.pole_constraint_name):
             cmds.poleVectorConstraint(
                 self.pole_ctrl.name,
@@ -372,46 +431,66 @@ class LimbIkFk(RigModule):
                 name=self.pole_constraint_name
             )
 
-        # 4. ik / fk 混合驱动 deform 关节
+    def create_blend_constraints(self):
+        u"""ik / fk 两套关节混合驱动 deform 关节。"""
+
         for index in range(len(self.deform_joints)):
             constraint_name = self.blend_constraint_names[index]
 
-            if not cmds.objExists(constraint_name):
-                cmds.parentConstraint(
-                    self.ik_jnt_names[index],
-                    self.fk_jnt_names[index],
-                    self.deform_names[index],
-                    maintainOffset=True,
-                    name=constraint_name
-                )
+            if cmds.objExists(constraint_name):
+                continue
 
-        # 5. Switch 属性 + 驱动关键帧
-        self._setup_switch()
+            cmds.parentConstraint(
+                self.ik_jnt_names[index],
+                self.fk_jnt_names[index],
+                self.deform_names[index],
+                maintainOffset=True,
+                name=constraint_name
+            )
 
-        return self.ik_handle_name
+    # ------------------------------------------------------------------
+    # Switch
+    # ------------------------------------------------------------------
 
-    def _setup_switch(self):
-        u"""在 IK 控制器上建 Switch 属性，驱动权重和可见性。"""
+    def setup_switch(self):
+        u"""建 Switch 属性并接上驱动。"""
+
+        self.add_switch_attr()
+        self.drive_blend_weights()
+        self.drive_ctrl_visibility()
+
+    def add_switch_attr(self):
+        u"""在 IK 控制器上加 Switch 属性。"""
 
         control = self.ik_ctrl.name
 
-        if not cmds.attributeQuery("Switch", node=control, exists=True):
-            cmds.addAttr(
-                control,
-                longName="Switch",
-                defaultValue=0.0,
-                minValue=0.0,
-                maxValue=1.0,
-                keyable=True
-            )
+        if cmds.attributeQuery("Switch", node=control, exists=True):
+            return
 
-        # 权重：Switch=0 -> IK 权重 1；Switch=1 -> FK 权重 1
+        cmds.addAttr(
+            control,
+            longName="Switch",
+            defaultValue=0.0,
+            minValue=0.0,
+            maxValue=1.0,
+            keyable=True
+        )
+
+    def drive_blend_weights(self):
+        u"""Switch 驱动两个约束的权重。"""
+
+        control = self.ik_ctrl.name
+
         for constraint_name in self.blend_constraint_names:
             if not cmds.objExists(constraint_name):
                 continue
 
-            for switch_value, ik_weight, fk_weight in ((0.0, 1.0, 0.0), (1.0, 0.0, 1.0)):
+            for switch_value, ik_weight, fk_weight in (
+                (0.0, 1.0, 0.0),
+                (1.0, 0.0, 1.0)
+            ):
                 cmds.setAttr(control + ".Switch", switch_value)
+
                 cmds.setDrivenKeyframe(
                     constraint_name + ".w0",
                     currentDriver=control + ".Switch",
@@ -425,21 +504,29 @@ class LimbIkFk(RigModule):
                     value=fk_weight
                 )
 
-        # 可见性：Switch=0 显示 IK 控制器，Switch=1 显示 FK 控制器
+    def drive_ctrl_visibility(self):
+        u"""Switch 驱动控制器显示：IK 组和 FK 组互斥。"""
+
+        control = self.ik_ctrl.name
+
         ik_zero = self.ik_ctrl.name.replace("ctrl_", "zero_", 1)
         pole_zero = self.pole_ctrl.name.replace("ctrl_", "zero_", 1)
+        fk_zero = self.fk_ctrls[0].name.replace("ctrl_", "zero_", 1)
 
         for target, ik_visible in (
             (ik_zero, 1.0),
             (pole_zero, 1.0),
-            (self.fk_ctrls[0].name.replace("ctrl_", "zero_", 1), 0.0),
+            (fk_zero, 0.0)
         ):
             if not cmds.objExists(target):
                 continue
 
             for switch_value in (0.0, 1.0):
                 cmds.setAttr(control + ".Switch", switch_value)
-                visibility = ik_visible if switch_value == 0.0 else 1.0 - ik_visible
+
+                visibility = (
+                    ik_visible if switch_value == 0.0 else 1.0 - ik_visible
+                )
 
                 cmds.setDrivenKeyframe(
                     target + ".visibility",
@@ -497,20 +584,10 @@ class LimbIkFk(RigModule):
     # ------------------------------------------------------------------
 
     def delete_rig(self):
-        u"""删驱动关键帧、约束、ikHandle，再删两组。"""
+        u"""先删约束和 ikHandle，再删两组。"""
 
-        all_constraints = (
-            self.fk_drive_constraint_names
-            + self.blend_constraint_names
-            + [self.pole_constraint_name]
-        )
-
-        for constraint_name in all_constraints:
-            if cmds.objExists(constraint_name):
-                cmds.delete(constraint_name)
-
-        if cmds.objExists(self.ik_handle_name):
-            cmds.delete(self.ik_handle_name)
+        self.delete_constraints()
+        self.delete_ik_handle()
 
         delete_nodes = super(LimbIkFk, self).delete_rig()
 
@@ -523,3 +600,22 @@ class LimbIkFk(RigModule):
         self.pole_ctrl = None
 
         return delete_nodes
+
+    def delete_constraints(self):
+        u"""删所有约束。"""
+
+        names = (
+            self.fk_drive_constraint_names
+            + self.blend_constraint_names
+            + [self.pole_constraint_name]
+        )
+
+        for constraint_name in names:
+            if cmds.objExists(constraint_name):
+                cmds.delete(constraint_name)
+
+    def delete_ik_handle(self):
+        u"""删 ikHandle。"""
+
+        if cmds.objExists(self.ik_handle_name):
+            cmds.delete(self.ik_handle_name)

@@ -37,7 +37,8 @@ from maya import cmds
 from maya.app.general.mayaMixin import MayaQWidgetBaseMixin
 
 from ...systems.rig.guide import Guide, align_pole_to_plane
-from ...systems.rig.module.ikfk import LimbIkFk
+from ...systems.rig.module.arm import Arm
+from ...systems.rig.module.leg import Leg
 from ...ui import theme
 
 
@@ -286,24 +287,22 @@ class LimbTool(MayaQWidgetBaseMixin, QtWidgets.QWidget):
         module = self.get_module()
         side = self.get_side()
 
+        limb_class = Arm if module == "arm" else Leg
+
         try:
-            chain = LimbIkFk(
-                module=module,
-                side=side,
-                guides=guides
-            )
-            chain.build_rig()
-            chain.connect_rig()
+            limb = limb_class(side=side, guides=guides)
+            limb.build_rig()
+            limb.connect_rig()
         except Exception as error:
             cmds.warning(str(error))
             self.status_label.setText(u"创建失败：{}".format(error))
             return
 
-        cmds.select(chain.fk_ctrl_names, replace=True)
+        cmds.select(limb.fk_ctrl_names, replace=True)
 
         self.status_label.setText(
             u"已创建 {}_{}：{} 个关节".format(
-                side, module, len(chain.deform_joints)
+                side, module, len(limb.deform_joints)
             )
         )
 
