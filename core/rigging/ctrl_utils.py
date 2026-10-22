@@ -375,6 +375,143 @@ class Ctrl(object):
                     objectSpace=True
                 )
 
+    def rotate_shape(self, degrees):
+        u"""把形状绕自身中心旋转。
+
+        和 set_axis 的区别：set_axis 是六个预设朝向，
+        这个接受任意角度，可以一点点转着看。
+
+        Args:
+            degrees (float): 绕 Z 轴的角度。
+        """
+
+        rotation = (0.0, 0.0, float(degrees))
+
+        for shape in self.get_shapes():
+            for cv in cmds.ls(shape + ".cv[*]", flatten=True):
+                position = cmds.xform(
+                    cv,
+                    query=True,
+                    translation=True,
+                    objectSpace=True
+                )
+                cmds.xform(
+                    cv,
+                    translation=_rotate_point(position, rotation),
+                    objectSpace=True
+                )
+
+    def mirror_shape(self, axis="x"):
+        u"""沿指定轴镜像形状。
+
+        Args:
+            axis (str): x / y / z。
+
+        Raises:
+            ValueError: 轴不支持。
+        """
+
+        indices = {"x": 0, "y": 1, "z": 2}
+
+        if axis not in indices:
+            raise ValueError(
+                u"镜像轴只能是 x / y / z，收到：{}".format(axis)
+            )
+
+        index = indices[axis]
+
+        for shape in self.get_shapes():
+            for cv in cmds.ls(shape + ".cv[*]", flatten=True):
+                position = cmds.xform(
+                    cv,
+                    query=True,
+                    translation=True,
+                    objectSpace=True
+                )
+                position[index] = -position[index]
+
+                cmds.xform(
+                    cv,
+                    translation=position,
+                    objectSpace=True
+                )
+
+    # ------------------------------------------------------------------
+    # 形状库
+    # ------------------------------------------------------------------
+
+    def get_shape_data(self):
+        u"""把当前形状导出成形状库格式。
+
+        Returns:
+            list: 每条曲线的 points / degree / form。
+        """
+
+        data = []
+
+        for shape in self.get_shapes():
+            points = []
+
+            for cv in cmds.ls(shape + ".cv[*]", flatten=True):
+                points.extend(cmds.xform(
+                    cv,
+                    query=True,
+                    translation=True,
+                    objectSpace=True
+                ))
+
+            data.append({
+                "points": points,
+                "degree": cmds.getAttr(shape + ".degree"),
+                "form": cmds.getAttr(shape + ".form"),
+            })
+
+        return data
+
+    def save_shape(self, shape_name):
+        u"""把当前形状保存到形状库。
+
+        Args:
+            shape_name (str): 新形状名，不带扩展名。
+
+        Returns:
+            str: 写入的文件路径。
+        """
+
+        if not shape_name:
+            raise ValueError(u"形状名不能为空。")
+
+        path = os.path.join(self.shape_dir, shape_name + ".json")
+
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(self.get_shape_data(), handle)
+
+        return path
+
+    @classmethod
+    def delete_shape(cls, shape_name):
+        u"""从形状库删除一个形状。
+
+        只删 .json 数据，缩略图如果存在也一起删。
+
+        Args:
+            shape_name (str): 形状名。
+
+        Returns:
+            bool: 删掉了返回 True。
+        """
+
+        removed = False
+
+        for extension in (".json", ".png"):
+            path = os.path.join(cls.shape_dir, shape_name + extension)
+
+            if os.path.exists(path):
+                os.remove(path)
+                removed = True
+
+        return removed
+
     def match_transform(self, target, position=True, rotation=True, scale=True):
         u"""把控制器对齐到目标节点。"""
 
