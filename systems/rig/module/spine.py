@@ -353,19 +353,23 @@ class Spine(RigModule):
     def connect_rig(self):
         u"""建驱动关系。
 
-        目前只做到生成 ikHandle：
-        FK 约束和 ikHandle 都建好了，但后面的曲线蒙皮、
-        驱动关节、混合约束、Switch 全部跳过。
+        当前步骤：
 
-        目的是单独观察 ikHandle 生成出来的曲线和关节是否正确，
-        排除后续环节的干扰。确认没问题后把注释掉的几行放回来。
+            1. FK 约束
+            2. 按关节位置建曲线
+            3. 曲线蒙皮到 hip / chest 两个驱动关节
+            4. 曲线绑定 spline IK
+
+        控制器约束驱动关节（create_curve_drivers）还没接，
+        暂时可以直接移动 jnt_md_spine_hip_001 / chest_001 测试蒙皮。
         """
 
         self.create_fk_drivers()
+        self.create_curve()
+        self.create_curve_skin()
         self.create_spline_ik()
 
-        # 以下暂时关闭，先验证 ikHandle 本身
-        # self.create_curve_skin()
+        # 以下暂时关闭
         # self.create_curve_drivers()
         # self.add_blend_attr()
         # self.create_reverse()
@@ -373,6 +377,32 @@ class Spine(RigModule):
         # self.setup_visibility()
 
         return self.ik_handle_name
+
+    def create_curve(self):
+        u"""按 ik 关节的位置建曲线。
+
+        每个 CV 直接放在对应关节上，曲线首尾必然经过关节，
+        中间段落由 cubic 平滑过渡——和教程里手动吸附关节的做法一致。
+
+        用 degree=3：cubic 比 linear 圆滑，弯起来不会出现折角。
+        """
+
+        positions = [
+            cmds.xform(jnt.name, query=True, worldSpace=True, translation=True)
+            for jnt in self.ik_joints
+        ]
+
+        self.curve = cmds.curve(
+            point=positions,
+            degree=3,
+            name=self.curve_name
+        )
+
+        # 曲线放世界组，避免跟着控制器 double transform
+        cmds.parent(self.curve, self.world_grp, absolute=True)
+        cmds.setAttr(self.curve + ".visibility", 0)
+
+        return self.curve
 
     def create_fk_drivers(self):
         u"""FK 控制器约束 fk 关节。"""
@@ -429,36 +459,22 @@ class Spine(RigModule):
         return self.skin_cluster
 
     def create_spline_ik(self):
-        u"""样条 IK：曲线由 ikHandle 自动生成。
+        u"""样条 IK：用已有的曲线绑定 ik 关节链。
 
-        不手动建曲线：
-        ikSplineSolver 会沿关节链自动生成一条曲线，
-        形状天然贴合关节，省掉手动吸附和微调。
-
-        ikHandle 命令的返回值是：
-
-            [ikHandle, effector, curve]
-
-        第三个就是自动生成的曲线，直接拿来用。
+        createCurve=False：
+        不让 ikHandle 自己生成曲线，直接绑定 create_curve 建好的那条。
+        这样 CV 位置完全由我们控制（放在关节上），
+        也方便后续对它做 skinCluster。
         """
 
-        result = cmds.ikHandle(
+        ik_handle = cmds.ikHandle(
             name=self.ik_handle_name,
             startJoint=self.ik_joints[0].name,
             endEffector=self.ik_joints[-1].name,
-            solver="ikSplineSolver"
-            
-            # createCurve 默认 True：自动生成曲线
-        )
-
-        ik_handle = result[0]
-        auto_curve = result[2]
-
-        self.curve = cmds.rename(auto_curve, self.curve_name)
-
-        # 曲线放世界组，避免跟着控制器 double transform
-        cmds.parent(self.curve, self.world_grp, absolute=True)
-        cmds.setAttr(self.curve + ".visibility", 0)
+            solver="ikSplineSolver",
+            curve=self.curve,
+            createCurve=False
+        )[0]
 
         # ikHandle 挂到胯部控制器下，跟着整体走
         cmds.parent(ik_handle, self.hip_ctrl.name, absolute=True)
