@@ -123,7 +123,8 @@ class Ctrl(object):
 
     @classmethod
     def create_ctrl(cls, name, shape="circle", color=17, size=1.0,
-                    axis="X+", target=None, hierarchy=True):
+                    axis="X+", target=None, hierarchy=True,
+                    match_position=True, match_rotation=True, match_scale=True):
         u"""创建一个控制器。
 
         执行顺序固定：形状 → 颜色 → 大小 → 轴向 → 匹配 → 层级。
@@ -139,6 +140,11 @@ class Ctrl(object):
             axis (str): 形状朝向，X+ / X- / Y+ / Y- / Z+ / Z-。
             target (str): 对齐目标；None 表示不匹配。
             hierarchy (bool): 是否创建完整控制器层级。
+            match_position (bool): 是否对齐位置。
+            match_rotation (bool): 是否对齐旋转。
+                想要控制器位置跟着关节、朝向保持世界对齐时，
+                传 False 即可（重心、整体控制器常用）。
+            match_scale (bool): 是否对齐缩放。
 
         Returns:
             Ctrl: 新建的控制器。
@@ -164,11 +170,16 @@ class Ctrl(object):
 
         # 匹配目标放在形状设置之后：形状是本地数据，不影响位置。
         if target is not None:
-            ctrl.match_transform(target)
+            ctrl.match_transform(
+                target,
+                position=match_position,
+                rotation=match_rotation,
+                scale=match_scale
+            )
 
         if hierarchy:
             ctrl.create_hierarchy(sub_ctrl=True, sub_shape=shape,
-                         sub_color=color, sub_size=size*0.7)
+                         sub_color=color, sub_size=size*0.7,axis = axis)
 
         return ctrl
 
@@ -530,7 +541,7 @@ class Ctrl(object):
     # ------------------------------------------------------------------
 
     def create_hierarchy(self, sub_ctrl=True, sub_shape="circle",
-                         sub_color=17, sub_size=0.7):
+                         sub_color=17, sub_size=0.7,axis = 'X+'):
         u"""创建完整控制器层级。
 
         从 ctrl 开始，由内向外一层层包：
@@ -561,7 +572,8 @@ class Ctrl(object):
             self.create_sub_ctrl(
                 shape=sub_shape,
                 color=sub_color,
-                size=sub_size
+                size=sub_size,
+                axis = axis
             )
 
         self._ensure_output()
@@ -610,7 +622,7 @@ class Ctrl(object):
 
         return group
 
-    def create_sub_ctrl(self, shape="circle", color=17, size=0.7):
+    def create_sub_ctrl(self, shape="circle", color=17, size=0.7,axis = 'X+'):
         u"""创建次级控制器，并把变换连接到 output。
 
         为什么是连接而不是父子关系：
@@ -642,7 +654,8 @@ class Ctrl(object):
                 color=color,
                 size=size,
                 target=self.name,
-                hierarchy=False
+                hierarchy=False,
+                axis = axis
             )
             cmds.parent(sub.name, self.name, absolute=True)
 

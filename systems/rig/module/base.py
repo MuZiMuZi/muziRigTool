@@ -158,7 +158,10 @@ class RigModule(object):
         color=17,
         size=1.0,
         axis="X+",
-        hierarchy=True
+        hierarchy=True,
+        match_position=True,
+        match_rotation=True,
+        match_scale=True
     ):
         u"""按 Guide 和名称列表批量建控制器。
 
@@ -170,6 +173,9 @@ class RigModule(object):
             size (float): 大小倍率。
             axis (str): 朝向。
             hierarchy (bool): 是否建完整层级。
+            match_position (bool): 是否对齐位置。
+            match_rotation (bool): 是否对齐旋转。
+            match_scale (bool): 是否对齐缩放。
 
         Returns:
             list: Ctrl 对象列表。
@@ -183,7 +189,10 @@ class RigModule(object):
                 size=size,
                 axis=axis,
                 target=guide,
-                hierarchy=hierarchy
+                hierarchy=hierarchy,
+                match_position=match_position,
+                match_rotation=match_rotation,
+                match_scale=match_scale
             )
             for name, guide in zip(names, guides)
         ]
