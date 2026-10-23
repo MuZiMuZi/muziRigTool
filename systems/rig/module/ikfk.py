@@ -33,6 +33,7 @@ Arm / Leg 继承这个类，只覆盖默认配置。
 from maya import cmds
 
 from ....core.common.name_utils import Name
+from ....core.rigging.ctrl_utils import Ctrl
 from .base import RigModule
 
 
@@ -287,7 +288,7 @@ class LimbIkFk(RigModule):
             translation=True
         )
 
-        self.ik_ctrl = self.create_ctrl(
+        self.ik_ctrl = Ctrl.create_ctrl(
             self.ik_ctrl_name,
             shape=self.config.ik_shape,
             color=self.config.ik_color,
@@ -305,7 +306,7 @@ class LimbIkFk(RigModule):
             translation=True
         )
 
-        self.pole_ctrl = self.create_ctrl(
+        self.pole_ctrl = Ctrl.create_ctrl(
             self.pole_ctrl_name,
             shape=self.config.pole_shape,
             color=self.config.pole_color,

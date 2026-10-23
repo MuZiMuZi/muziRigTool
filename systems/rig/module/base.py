@@ -3,7 +3,7 @@ u"""RigModule：绑定模块基础实现。
 
 生命周期：
 
-    build_rig()     读取 Guide -> 创建关节 -> 创建控制器 -> 整理层级
+    build_rig()     清旧输出 -> 读取 Guide -> 创建关节 -> 创建控制器 -> 整理层级
     connect_rig()   建立驱动连接（子类实现）
     delete_rig()    删除整个模块
 
@@ -12,12 +12,14 @@ u"""RigModule：绑定模块基础实现。
     - 模块不负责寻找 Guide，只用外部传进来的
     - 需要几个关节、几个控制器，由子类决定
     - 连接方式（约束 / 矩阵 / 变形器）由子类决定
+    - 只包装真正有逻辑的部分：批量创建、串链、总组管理
+      单纯转发 core 的方法不在这里重复一遍
 
 和旧库的差异：
 
     - 去掉 hierarchy_utils 依赖，两个小函数内联
-    - 适配新库的 Jnt.create_jnt / Ctrl.create_ctrl
-    - 精简 docstring，只保留解释「为什么」的部分
+    - 不再包装 create_joint / create_ctrl，子类直接调 core
+    - build_rig 先清理旧输出，支持重复构建
 """
 
 from maya import cmds
@@ -85,6 +87,10 @@ class RigModule(object):
 
         self.guide_list = []
 
+    # ------------------------------------------------------------------
+    # Guide
+    # ------------------------------------------------------------------
+
     def get_guides(self):
         u"""整理并校验 Guide 列表。
 
@@ -115,94 +121,35 @@ class RigModule(object):
 
         return self.guide_list
 
-    def create_joint(self, name, guide=None):
-        u"""创建一个关节，可选对齐到 Guide。
-
-        Args:
-            name (str): 关节名。
-            guide (str): 对齐目标。
-
-        Returns:
-            Jnt: 新建的关节。
-        """
-
-        return Jnt.create_jnt(name, target=guide)
-
-    def create_ctrl(
-        self,
-        name,
-        guide=None,
-        shape="circle",
-        color=17,
-        size=1.0,
-        axis="X+",
-        hierarchy=True
-    ):
-        u"""创建一个控制器，可选对齐到 Guide。
-
-        Args:
-            name (str): 控制器名。
-            guide (str): 对齐目标。
-            shape (str): 形状名。
-            color (int): 颜色索引。
-            size (float): 大小倍率。
-            axis (str): 朝向。
-            hierarchy (bool): 是否建完整层级。
-
-        Returns:
-            Ctrl: 新建的控制器。
-        """
-
-        return Ctrl.create_ctrl(
-            name,
-            shape=shape,
-            color=color,
-            size=size,
-            axis=axis,
-            target=guide,
-            hierarchy=hierarchy
-        )
-
     # ------------------------------------------------------------------
     # 子类实现
     # ------------------------------------------------------------------
 
     def create_joints(self):
-        u"""创建模块需要的关节。"""
+        u"""创建模块需要的关节。
 
-        pass
-
-    def create_ctrls(self):
-        u"""创建模块需要的控制器。"""
-
-        pass
-
-    def connect_rig(self):
-        u"""建立驱动连接。"""
-
-        pass
-
-    # ------------------------------------------------------------------
-    # 生命周期
-    # ------------------------------------------------------------------
-
-    def setup_hierarchy(self):
-        u"""创建 jnt / ctrl 总组，并挂到指定父组。
-
-        Returns:
-            tuple: (jnt 组名, ctrl 组名)
+        子类必须实现，否则 build_rig 会静默什么都不建。
         """
 
-        ensure_group(self.jnt_master_grp)
-        ensure_group(self.ctrl_master_grp)
+        raise NotImplementedError(
+            u"{} 必须实现 create_joints()".format(type(self).__name__)
+        )
 
-        if self.jnt_parent:
-            parent_keep_world(self.jnt_master_grp, self.jnt_parent)
+    def create_ctrls(self):
+        u"""创建模块需要的控制器。
 
-        if self.ctrl_parent:
-            parent_keep_world(self.ctrl_master_grp, self.ctrl_parent)
+        子类必须实现。
+        """
 
-        return self.jnt_master_grp, self.ctrl_master_grp
+        raise NotImplementedError(
+            u"{} 必须实现 create_ctrls()".format(type(self).__name__)
+        )
+
+    def connect_rig(self):
+        u"""建立驱动连接。
+
+        可选实现：纯结构模块（只建关节和控制器）可以不覆盖。
+        """
 
     # ------------------------------------------------------------------
     # 通用构件
@@ -220,7 +167,7 @@ class RigModule(object):
         """
 
         return [
-            self.create_joint(name, guide=guide)
+            Jnt.create_jnt(name, target=guide)
             for name, guide in zip(names, guides)
         ]
 
@@ -250,13 +197,13 @@ class RigModule(object):
         """
 
         return [
-            self.create_ctrl(
+            Ctrl.create_ctrl(
                 name,
-                guide=guide,
                 shape=shape,
                 color=color,
                 size=size,
                 axis=axis,
+                target=guide,
                 hierarchy=hierarchy
             )
             for name, guide in zip(names, guides)
@@ -306,24 +253,27 @@ class RigModule(object):
 
         return ctrls
 
-    def delete_named_nodes(self, names):
-        u"""按名称删节点，不存在就跳过。
+    # ------------------------------------------------------------------
+    # 生命周期
+    # ------------------------------------------------------------------
 
-        Args:
-            names (list): 节点名列表。
+    def setup_hierarchy(self):
+        u"""创建 jnt / ctrl 总组，并挂到指定父组。
 
         Returns:
-            list: 实际删掉的节点名。
+            tuple: (jnt 组名, ctrl 组名)
         """
 
-        deleted = []
+        ensure_group(self.jnt_master_grp)
+        ensure_group(self.ctrl_master_grp)
 
-        for name in names:
-            if cmds.objExists(name):
-                cmds.delete(name)
-                deleted.append(name)
+        if self.jnt_parent:
+            parent_keep_world(self.jnt_master_grp, self.jnt_parent)
 
-        return deleted
+        if self.ctrl_parent:
+            parent_keep_world(self.ctrl_master_grp, self.ctrl_parent)
+
+        return self.jnt_master_grp, self.ctrl_master_grp
 
     def build_rig(self):
         u"""创建模块的绑定输出。
