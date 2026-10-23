@@ -24,31 +24,10 @@ u"""RigModule：绑定模块基础实现。
 
 from maya import cmds
 
+from ....core.common.hierarchy_utils import ensure_group, parent_keep_world
 from ....core.common.name_utils import Name
 from ....core.rigging.ctrl_utils import Ctrl
 from ....core.rigging.jnt_utils import Jnt
-
-
-def ensure_group(name):
-    u"""组不存在就创建，存在就复用。
-
-    Args:
-        name (str): 组名。
-
-    Returns:
-        str: 组名。
-    """
-
-    if cmds.objExists(name):
-        return name
-
-    return cmds.group(empty=True, name=name)
-
-
-def parent_keep_world(child, parent):
-    u"""挂到父节点下，保持世界位置。"""
-
-    cmds.parent(child, parent, absolute=True)
 
 
 class RigModule(object):

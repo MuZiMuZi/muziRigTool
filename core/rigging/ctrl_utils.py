@@ -26,6 +26,8 @@ import os
 
 import maya.cmds as cmds
 
+from ..common.hierarchy_utils import ensure_group_at
+
 
 # 控制器层级，从内到外排列。
 # create_hierarchy 会按这个顺序，一层层把 ctrl 往外包。
@@ -578,13 +580,8 @@ class Ctrl(object):
         # 里面已经没有 "ctrl_" 了，替换会失效。
         group_name = self.name.replace("ctrl_", layer + "_", 1)
 
-        if not cmds.objExists(group_name):
-            # 组不存在：新建一个空组，并对齐到当前节点，保证不动位置。
-            group = cmds.group(empty=True, name=group_name)
-            cmds.matchTransform(group, child)
-        else:
-            # 组已存在：直接复用，不重复创建。
-            group = group_name
+        # 不存在就建，并对齐到当前节点，保证不动位置
+        group = ensure_group_at(group_name, child)
 
         current_parent = cmds.listRelatives(child, parent=True)
 
@@ -604,11 +601,7 @@ class Ctrl(object):
 
         output_name = self.name.replace("ctrl_", "output_", 1)
 
-        if not cmds.objExists(output_name):
-            group = cmds.group(empty=True, name=output_name)
-            cmds.matchTransform(group, self.name)
-        else:
-            group = output_name
+        group = ensure_group_at(output_name, self.name)
 
         current_parent = cmds.listRelatives(group, parent=True)
 
