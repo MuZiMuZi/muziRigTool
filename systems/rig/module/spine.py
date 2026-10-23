@@ -67,8 +67,8 @@ class Spine(RigModule):
         ik_shape="cube",
         fk_color=17,
         ik_color=13,
-        size=1.0,
-        axis="X+",
+        size=8,
+        axis="Y+",
         jnt_parent=None,
         ctrl_parent=None
     ):
@@ -149,6 +149,11 @@ class Spine(RigModule):
 
         count = len(self.guide_list)
 
+        self.cog_ctrl_name =  Name(
+            type="ctrl", side=self.side, part=self.module,
+            function="cog", index=1
+        ).name
+
         def joint_names(function):
             return [
                 Name(
@@ -225,7 +230,7 @@ class Spine(RigModule):
 
         self.ik_handle_name = Name(
             type="ikHandle", side=self.side, part=self.module,
-            function="spline", index=1
+            function="spine", index=1
         ).name
 
         self.skin_cluster_name = Name(
@@ -276,6 +281,14 @@ class Spine(RigModule):
 
     def create_ctrls(self):
         u"""FK 控制器链 + 胯部 / 胸腔控制器。"""
+        self.cog_ctrl = Ctrl.create_ctrl(self.cog_ctrl_name,shape='hex',
+            color=self.ik_color,
+            size=self.size * 5,
+            axis=self.axis,
+            target=self.guide_list[0],
+            hierarchy=True)
+
+
 
         self.fk_ctrls = self.create_ctrls_for_guides(
             self.guide_list,
@@ -293,7 +306,8 @@ class Spine(RigModule):
             size=self.size * 1.2,
             axis=self.axis,
             target=self.guide_list[0],
-            hierarchy=True
+            hierarchy=True,
+            match_rotation = False
         )
 
         self.chest_ctrl = Ctrl.create_ctrl(
@@ -303,7 +317,8 @@ class Spine(RigModule):
             size=self.size * 1.2,
             axis=self.axis,
             target=self.guide_list[-1],
-            hierarchy=True
+            hierarchy=True,
+            match_rotation = False
         )
 
     # ------------------------------------------------------------------
@@ -339,9 +354,8 @@ class Spine(RigModule):
         u"""建驱动关系。"""
 
         self.create_fk_drivers()
-        self.create_curve()
-        self.create_curve_skin()
         self.create_spline_ik()
+        self.create_curve_skin()
         self.create_curve_drivers()
 
         self.add_blend_attr()
@@ -367,24 +381,6 @@ class Spine(RigModule):
                 name=constraint_name
             )
 
-    def create_curve(self):
-        u"""沿 ik 关节建 cubic 曲线。"""
-
-        positions = [
-            cmds.xform(jnt.name, query=True, worldSpace=True, translation=True)
-            for jnt in self.ik_joints
-        ]
-
-        self.curve = cmds.curve(
-            point=positions,
-            degree=3,
-            name=self.curve_name
-        )
-
-        cmds.parent(self.curve, self.world_grp, absolute=True)
-
-        return self.curve
-
     def create_curve_skin(self):
         u"""曲线蒙皮到两个驱动关节。
 
@@ -405,16 +401,16 @@ class Spine(RigModule):
             name=self.skin_cluster_name
         )[0]
 
-        cv_count = len(self.ik_joints)
+        # CV 数量从曲线读，不假设和关节数一致——
+        # spline IK 自动生成的曲线 CV 数由 Maya 决定
+        cv_count = len(cmds.ls(self.curve + ".cv[*]", flatten=True))
 
         for index in range(cv_count):
             ratio = float(index) / float(cv_count - 1)
 
-            cv = "{} .cv[{}]".format(self.curve, index).replace(" ", "")
-
             cmds.skinPercent(
                 self.skin_cluster,
-                cv,
+                self.curve + ".cv[{}]".format(index),
                 transformValue=[
                     (self.hip_driver.name, 1.0 - ratio),
                     (self.chest_driver.name, ratio),
@@ -424,24 +420,40 @@ class Spine(RigModule):
         return self.skin_cluster
 
     def create_spline_ik(self):
-        u"""样条 IK：曲线形状驱动 ik 关节链。
+        u"""样条 IK：曲线由 ikHandle 自动生成。
 
-        createCurve=False 表示用已有曲线，不自动新建。
+        不手动建曲线：
+        ikSplineSolver 会沿关节链自动生成一条曲线，
+        形状天然贴合关节，省掉手动吸附和微调。
+
+        ikHandle 命令的返回值是：
+
+            [ikHandle, effector, curve]
+
+        第三个就是自动生成的曲线，直接拿来用。
         """
 
-        ik_handle = cmds.ikHandle(
+        result = cmds.ikHandle(
             name=self.ik_handle_name,
             startJoint=self.ik_joints[0].name,
             endEffector=self.ik_joints[-1].name,
-            solver="ikSplineSolver",
-            curve=self.curve,
-            createCurve=False
+            solver="ikSplineSolver"
+            # createCurve 默认 True：自动生成曲线
         )
 
-        # ikHandle 挂到胯部控制器下，跟着整体走
-        cmds.parent(ik_handle[0], self.hip_ctrl.name, absolute=True)
+        ik_handle = result[0]
+        auto_curve = result[2]
 
-        return ik_handle[0]
+        self.curve = cmds.rename(auto_curve, self.curve_name)
+
+        # 曲线放世界组，避免跟着控制器 double transform
+        cmds.parent(self.curve, self.world_grp, absolute=True)
+        cmds.setAttr(self.curve + ".visibility", 0)
+
+        # ikHandle 挂到胯部控制器下，跟着整体走
+        cmds.parent(ik_handle, self.hip_ctrl.name, absolute=True)
+
+        return ik_handle
 
     def create_curve_drivers(self):
         u"""控制器约束驱动关节，驱动关节再带动曲线。"""
