@@ -482,27 +482,23 @@ class Spine(RigModule):
         return ik_handle
 
     def create_curve_drivers(self):
-        u"""控制器约束驱动关节，驱动关节再带动曲线。"""
+        u"""驱动关节直接挂到控制器层级下，靠父子关系跟随。
 
-        cmds.parentConstraint(
-            self.hip_ctrl.name,
-            self.hip_driver.name,
-            maintainOffset=False,
-            name=Name(
-                type="cons", side=self.side, part=self.module,
-                function="hipdrive", index=1
-            ).name
-        )
+        不用 parentConstraint：
+        约束会让驱动关节的世界变换被完全覆盖，
+        关节自己的旋转/位置调不了，排查问题时也不方便。
 
-        cmds.parentConstraint(
-            self.chest_ctrl.name,
-            self.chest_driver.name,
-            maintainOffset=False,
-            name=Name(
-                type="cons", side=self.side, part=self.module,
-                function="chestdrive", index=1
-            ).name
-        )
+        父子关系更直接：
+            移动控制器 → 驱动关节跟着走
+            关节自身仍然可以单独调整
+        """
+
+        for ctrl, driver in (
+            (self.hip_ctrl, self.hip_driver),
+            (self.chest_ctrl, self.chest_driver),
+        ):
+            output = ctrl.get_output()
+            cmds.parent(driver.name, output, absolute=True)
 
     def create_blend_constraints(self):
         u"""约束混合 fk / ik 的世界变换。
@@ -640,21 +636,8 @@ class Spine(RigModule):
     def delete_rig(self):
         u"""删约束、ikHandle、曲线蒙皮、曲线、反向节点，再删总组。"""
 
-        extra_constraints = [
-            Name(
-                type="cons", side=self.side, part=self.module,
-                function="hipdrive", index=1
-            ).name,
-            Name(
-                type="cons", side=self.side, part=self.module,
-                function="chestdrive", index=1
-            ).name,
-        ]
-
         for constraint_name in (
-            self.fk_constraint_names
-            + self.blend_constraint_names
-            + extra_constraints
+            self.fk_constraint_names + self.blend_constraint_names
         ):
             if cmds.objExists(constraint_name):
                 cmds.delete(constraint_name)
