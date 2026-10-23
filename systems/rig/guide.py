@@ -315,14 +315,14 @@ def template_root_name(module):
 body_part_chains = {
     "arm": ("upperArm", "elbow", "wrist"),
     "leg": ("upperLeg", "knee", "ankle"),
-    # 脊柱要全部 6 节：Spine 模块逐节建 FK 控制器
+    # 脊柱：001~005 参与绑定，006 只是顶端挂点（锁骨、脖子挂它下面），
+    # 不参与 IK 曲线和 FK 链
     "spine": (
         "spine_guide_001",
         "spine_guide_002",
         "spine_guide_003",
         "spine_guide_004",
         "spine_guide_005",
-        "spine_guide_006",
     ),
     "neck": ("neck_guide_001", "neck_guide_002", "head_guide_001"),
 }
