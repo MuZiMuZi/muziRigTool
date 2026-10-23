@@ -359,18 +359,18 @@ class Spine(RigModule):
             2. 按关节位置建曲线
             3. 曲线蒙皮到 hip / chest 两个驱动关节
             4. 曲线绑定 spline IK
+            5. 控制器约束两个驱动关节
 
-        控制器约束驱动关节（create_curve_drivers）还没接，
-        暂时可以直接移动 jnt_md_spine_hip_001 / chest_001 测试蒙皮。
+        现在移动 ctrl_md_spine_chest_001 就能带动整条脊柱。
         """
 
         self.create_fk_drivers()
         self.create_curve()
         self.create_curve_skin()
         self.create_spline_ik()
+        self.create_curve_drivers()
 
-        # 以下暂时关闭
-        # self.create_curve_drivers()
+        # 混合和 Switch 还没接
         # self.add_blend_attr()
         # self.create_reverse()
         # self.create_blend_constraints()
