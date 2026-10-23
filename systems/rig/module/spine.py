@@ -522,6 +522,16 @@ class Spine(RigModule):
             cmds.parent(zero, offset)
             cmds.parent(loc, zero)
 
+        # 挂到对应控制器的 output 组：
+        # 起始 locator 跟胯部，末端 locator 跟胸腔，
+        # 这样它们始终贴着曲线两端，不会跑偏。
+        for loc, ctrl in (
+            (ik_twist_loc1, self.hip_ctrl),
+            (ik_twist_loc2, self.chest_ctrl),
+        ):
+            offset_name = loc.replace("loc_", "offset_", 1)
+            cmds.parent(offset_name, ctrl.get_output(), absolute=False)
+
         return ik_handle
 
     def create_curve_drivers(self):
