@@ -353,20 +353,18 @@ class Spine(RigModule):
     def connect_rig(self):
         u"""建驱动关系。
 
-        目前只做到生成 ikHandle：
-        FK 约束和 ikHandle 都建好了，但后面的曲线蒙皮、
-        驱动关节、混合约束、Switch 全部跳过。
+        第一步：FK 约束 + 样条 IK（已验证正常）
+        第二步：曲线蒙皮到驱动关节 + 控制器驱动关节
 
-        目的是单独观察 ikHandle 生成出来的曲线和关节是否正确，
-        排除后续环节的干扰。确认没问题后把注释掉的几行放回来。
+        混合约束和 Switch 还没接，bind 关节暂时静止。
         """
 
         self.create_fk_drivers()
         self.create_spline_ik()
+        self.create_curve_skin()
+        self.create_curve_drivers()
 
-        # 以下暂时关闭，先验证 ikHandle 本身
-        # self.create_curve_skin()
-        # self.create_curve_drivers()
+        # 以下等弯曲链路确认后再加
         # self.add_blend_attr()
         # self.create_reverse()
         # self.create_blend_constraints()
