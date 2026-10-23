@@ -351,17 +351,26 @@ class Spine(RigModule):
     # ------------------------------------------------------------------
 
     def connect_rig(self):
-        u"""建驱动关系。"""
+        u"""建驱动关系。
+
+        目前只做到生成 ikHandle：
+        FK 约束和 ikHandle 都建好了，但后面的曲线蒙皮、
+        驱动关节、混合约束、Switch 全部跳过。
+
+        目的是单独观察 ikHandle 生成出来的曲线和关节是否正确，
+        排除后续环节的干扰。确认没问题后把注释掉的几行放回来。
+        """
 
         self.create_fk_drivers()
         self.create_spline_ik()
-        self.create_curve_skin()
-        self.create_curve_drivers()
 
-        self.add_blend_attr()
-        self.create_reverse()
-        self.create_blend_constraints()
-        self.setup_visibility()
+        # 以下暂时关闭，先验证 ikHandle 本身
+        # self.create_curve_skin()
+        # self.create_curve_drivers()
+        # self.add_blend_attr()
+        # self.create_reverse()
+        # self.create_blend_constraints()
+        # self.setup_visibility()
 
         return self.ik_handle_name
 
@@ -438,6 +447,7 @@ class Spine(RigModule):
             startJoint=self.ik_joints[0].name,
             endEffector=self.ik_joints[-1].name,
             solver="ikSplineSolver"
+            
             # createCurve 默认 True：自动生成曲线
         )
 
