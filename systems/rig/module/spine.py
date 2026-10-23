@@ -1,49 +1,63 @@
 # coding=utf-8
-u"""脊柱模块：FK 链 + 样条 IK + 混合。
+u"""脊柱模块：FK 链 + 样条 IK + skinCluster 驱动曲线。
 
 三套关节：
 
     fk 关节链      FK 控制器驱动
-    ik 关节链      样条 IK 驱动（曲线端点由根/顶控制器控制）
-    bind 关节链    最终变形关节，由 blendColors 混合 fk / ik
+    ik 关节链      样条 IK 驱动（曲线形状决定弯曲）
+    bind 关节链    最终变形关节，由约束混合 fk / ik
 
-    fk 关节 ─┐
-             ├─ blendColors（IkFkBend 控制）→ bind 关节
-    ik 关节 ─┘
+曲线的驱动方式（关键）：
 
-为什么用样条 IK 而不是 ikRP：
+    两个驱动关节
+        hip_driver      胯部位置
+        chest_driver    胸腔位置
+            │ skinCluster（权重可调）
+            ▼
+        曲线 CV
+            │ spline IK
+            ▼
+        ik 关节链
 
-    脊柱需要沿整条链均匀弯曲。ikRP 只有两个解算点，
-    弯出来是硬折角；ikSplineSolver 沿曲线平滑弯曲，像真正的脊椎。
+为什么用 skinCluster 而不是直接约束 CV：
 
-为什么用 blendColors 而不是驱动关键帧：
+    直接约束只能控制首尾两个 CV，中间 CV 是死的，
+    拖动胸腔时只有末端弯曲，中间几乎不动。
 
-    blendColors 的 blender 可以停在 0.5，
-    动画师能做出「半 IK 半 FK」的过渡姿态；
-    驱动关键帧只能在 0 / 1 之间跳。
+    蒙皮到关节后，每个 CV 的权重都能单独调：
+        CV0  → 胯部 1.0
+        CVn  → 胸腔 1.0
+        中间  → 按距离插值
+    过渡自然，而且可以手动微调让某一段更软。
 
 结构示例：
 
     grp_md_spine_jnt_001
         ├─ jnt_md_spine_fk_001~005
         ├─ jnt_md_spine_ik_001~005
-        └─ jnt_md_spine_bind_001~005
+        ├─ jnt_md_spine_bind_001~005
+        ├─ jnt_md_spine_hip_001        驱动曲线的胯部关节
+        └─ jnt_md_spine_chest_001      驱动曲线的胸腔关节
 
     grp_md_spine_ctrl_001
         ├─ zero_md_spine_fk_001 → ctrl_md_spine_fk_001~005
-        ├─ zero_md_spine_ik_001 → ctrl_md_spine_ik_001    根
-        └─ zero_md_spine_ik_002 → ctrl_md_spine_ik_002    顶
+        ├─ zero_md_spine_hip_001 → ctrl_md_spine_hip_001
+        └─ zero_md_spine_chest_001 → ctrl_md_spine_chest_001
+
+    grp_md_spine_world_001             世界组，曲线放这里避免双重变换
+        └─ crv_md_spine_ik_001
 """
 
 from maya import cmds
 
+from ....core.common.hierarchy_utils import ensure_group
 from ....core.common.name_utils import Name
 from ....core.rigging.ctrl_utils import Ctrl
 from .base import RigModule
 
 
 class Spine(RigModule):
-    u"""脊柱：FK 链 + 样条 IK + blendColors 混合。"""
+    u"""脊柱：FK 链 + 样条 IK + skinCluster 曲线驱动。"""
 
     def __init__(
         self,
@@ -78,13 +92,17 @@ class Spine(RigModule):
         self.ik_jnt_names = []
         self.bind_jnt_names = []
         self.fk_ctrl_names = []
-        self.root_ctrl_name = ""
-        self.tip_ctrl_name = ""
+        self.hip_ctrl_name = ""
+        self.chest_ctrl_name = ""
+        self.hip_driver_name = ""
+        self.chest_driver_name = ""
         self.fk_constraint_names = []
         self.blend_constraint_names = []
         self.curve_name = ""
         self.ik_handle_name = ""
+        self.skin_cluster_name = ""
         self.reverse_name = ""
+        self.world_grp = ""
         self.blend_attr = "IkFkBend"
 
         # 场景对象
@@ -92,9 +110,12 @@ class Spine(RigModule):
         self.ik_joints = []
         self.bind_joints = []
         self.fk_ctrls = []
-        self.root_ctrl = None
-        self.tip_ctrl = None
+        self.hip_ctrl = None
+        self.chest_ctrl = None
+        self.hip_driver = None
+        self.chest_driver = None
         self.curve = None
+        self.skin_cluster = None
 
     # ------------------------------------------------------------------
     # Guide
@@ -103,7 +124,7 @@ class Spine(RigModule):
     def get_guides(self):
         u"""读取 Guide 并生成名称。
 
-        至少 2 个：根、顶。中间节数由 Guide 数量决定。
+        至少 2 个：根（胯部）、顶（胸腔）。
         """
 
         super(Spine, self).get_guides()
@@ -155,14 +176,24 @@ class Spine(RigModule):
             for index in range(1, count + 1)
         ]
 
-        self.root_ctrl_name = Name(
+        self.hip_ctrl_name = Name(
             type="ctrl", side=self.side, part=self.module,
-            function="ikroot", index=1
+            function="hip", index=1
         ).name
 
-        self.tip_ctrl_name = Name(
+        self.chest_ctrl_name = Name(
             type="ctrl", side=self.side, part=self.module,
-            function="iktop", index=1
+            function="chest", index=1
+        ).name
+
+        self.hip_driver_name = Name(
+            type="jnt", side=self.side, part=self.module,
+            function="hip", index=1
+        ).name
+
+        self.chest_driver_name = Name(
+            type="jnt", side=self.side, part=self.module,
+            function="chest", index=1
         ).name
 
         self.fk_constraint_names = [
@@ -171,6 +202,17 @@ class Spine(RigModule):
                 side=self.side,
                 part=self.module,
                 function="fk",
+                index=index
+            ).name
+            for index in range(1, count + 1)
+        ]
+
+        self.blend_constraint_names = [
+            Name(
+                type="cons",
+                side=self.side,
+                part=self.module,
+                function="blend",
                 index=index
             ).name
             for index in range(1, count + 1)
@@ -186,28 +228,27 @@ class Spine(RigModule):
             function="spline", index=1
         ).name
 
+        self.skin_cluster_name = Name(
+            type="skinCluster", side=self.side, part=self.module,
+            function="curve", index=1
+        ).name
+
         self.reverse_name = Name(
             type="reverse", side=self.side, part=self.module,
             function="vis", index=1
         ).name
 
-        self.blend_constraint_names = [
-            Name(
-                type="cons",
-                side=self.side,
-                part=self.module,
-                function="blend",
-                index=index
-            ).name
-            for index in range(1, count + 1)
-        ]
+        self.world_grp = Name(
+            type="grp", side=self.side, part=self.module,
+            function="world", index=1
+        ).name
 
     # ------------------------------------------------------------------
     # 关节
     # ------------------------------------------------------------------
 
     def create_joints(self):
-        u"""三套关节：fk / ik / bind。"""
+        u"""三套关节 + 两个曲线驱动关节。"""
 
         guides = self.guide_list
 
@@ -218,12 +259,23 @@ class Spine(RigModule):
         for jnt in self.fk_joints + self.ik_joints:
             cmds.setAttr(jnt.name + ".visibility", 0)
 
+        # 驱动关节：胯部在根，胸腔在顶
+        self.hip_driver = self.create_joints_for_guides(
+            self.guide_list[:1], [self.hip_driver_name]
+        )[0]
+        self.chest_driver = self.create_joints_for_guides(
+            self.guide_list[-1:], [self.chest_driver_name]
+        )[0]
+
+        for jnt in (self.hip_driver, self.chest_driver):
+            cmds.setAttr(jnt.name + ".visibility", 0)
+
     # ------------------------------------------------------------------
     # 控制器
     # ------------------------------------------------------------------
 
     def create_ctrls(self):
-        u"""FK 控制器链 + 根/顶 IK 控制器。"""
+        u"""FK 控制器链 + 胯部 / 胸腔控制器。"""
 
         self.fk_ctrls = self.create_ctrls_for_guides(
             self.guide_list,
@@ -234,8 +286,8 @@ class Spine(RigModule):
             axis=self.axis
         )
 
-        self.root_ctrl = Ctrl.create_ctrl(
-            self.root_ctrl_name,
+        self.hip_ctrl = Ctrl.create_ctrl(
+            self.hip_ctrl_name,
             shape=self.ik_shape,
             color=self.ik_color,
             size=self.size * 1.2,
@@ -244,8 +296,8 @@ class Spine(RigModule):
             hierarchy=True
         )
 
-        self.tip_ctrl = Ctrl.create_ctrl(
-            self.tip_ctrl_name,
+        self.chest_ctrl = Ctrl.create_ctrl(
+            self.chest_ctrl_name,
             shape=self.ik_shape,
             color=self.ik_color,
             size=self.size * 1.2,
@@ -259,30 +311,39 @@ class Spine(RigModule):
     # ------------------------------------------------------------------
 
     def setup_hierarchy(self):
-        u"""三套关节各自成链，控制器分组摆放。"""
+        u"""关节成链，控制器分组，曲线放世界组。"""
 
         super(Spine, self).setup_hierarchy()
 
         for chain in (self.fk_joints, self.ik_joints, self.bind_joints):
             self.chain_joints(chain)
 
+        # 两个驱动关节也挂在 jnt 组下，但不参与关节链
+        for jnt in (self.hip_driver, self.chest_driver):
+            cmds.parent(jnt.name, self.jnt_master_grp, absolute=True)
+
         self.chain_zero_groups(self.fk_ctrls)
 
-        for ctrl in (self.root_ctrl, self.tip_ctrl):
+        for ctrl in (self.hip_ctrl, self.chest_ctrl):
             zero_grp = ctrl.name.replace("ctrl_", "zero_", 1)
             cmds.parent(zero_grp, self.ctrl_master_grp, absolute=True)
+
+        # 世界组：曲线放这里，避免跟着控制器 double transform
+        ensure_group(self.world_grp)
 
     # ------------------------------------------------------------------
     # 连接
     # ------------------------------------------------------------------
 
     def connect_rig(self):
-        u"""FK 驱动、样条 IK、blendColors 混合、开关。"""
+        u"""建驱动关系。"""
 
         self.create_fk_drivers()
+        self.create_curve()
+        self.create_curve_skin()
         self.create_spline_ik()
+        self.create_curve_drivers()
 
-        # 顺序：属性 -> 反向节点 -> 混合约束 -> 可见性
         self.add_blend_attr()
         self.create_reverse()
         self.create_blend_constraints()
@@ -306,27 +367,68 @@ class Spine(RigModule):
                 name=constraint_name
             )
 
-    def create_spline_ik(self):
-        u"""沿 ik 关节建曲线，再建 spline IK。
-
-        顺序很重要：先建 IK 再挂 cluster。
-        spline IK 会接管曲线并重建它的历史，
-        如果在 IK 之前挂 cluster，会被一起清掉。
-        """
+    def create_curve(self):
+        u"""沿 ik 关节建 cubic 曲线。"""
 
         positions = [
             cmds.xform(jnt.name, query=True, worldSpace=True, translation=True)
             for jnt in self.ik_joints
         ]
 
-        # 曲线穿过所有 ik 关节
         self.curve = cmds.curve(
             point=positions,
             degree=3,
             name=self.curve_name
         )
 
-        # 样条 IK：曲线形状决定关节弯曲
+        cmds.parent(self.curve, self.world_grp, absolute=True)
+
+        return self.curve
+
+    def create_curve_skin(self):
+        u"""曲线蒙皮到两个驱动关节。
+
+        权重分配：
+            CV0      胯部 1.0
+            CVn      胸腔 1.0
+            中间     按位置线性插值
+
+        中间 CV 的权重决定弯曲过渡的软硬，
+        后续可以手动调某一段让它更柔和。
+        """
+
+        self.skin_cluster = cmds.skinCluster(
+            self.hip_driver.name,
+            self.chest_driver.name,
+            self.curve,
+            toSelectedBones=True,
+            name=self.skin_cluster_name
+        )[0]
+
+        cv_count = len(self.ik_joints)
+
+        for index in range(cv_count):
+            ratio = float(index) / float(cv_count - 1)
+
+            cv = "{} .cv[{}]".format(self.curve, index).replace(" ", "")
+
+            cmds.skinPercent(
+                self.skin_cluster,
+                cv,
+                transformValue=[
+                    (self.hip_driver.name, 1.0 - ratio),
+                    (self.chest_driver.name, ratio),
+                ]
+            )
+
+        return self.skin_cluster
+
+    def create_spline_ik(self):
+        u"""样条 IK：曲线形状驱动 ik 关节链。
+
+        createCurve=False 表示用已有曲线，不自动新建。
+        """
+
         ik_handle = cmds.ikHandle(
             name=self.ik_handle_name,
             startJoint=self.ik_joints[0].name,
@@ -336,45 +438,43 @@ class Spine(RigModule):
             createCurve=False
         )
 
-        # ikHandle 挂到根控制器下，跟着根一起走
-        cmds.parent(ik_handle[0], self.root_ctrl.name, absolute=True)
-
-        # 曲线放进 ctrl 组，跟着整体走
-        cmds.parent(self.curve, self.ctrl_master_grp, absolute=True)
-
-        # IK 建好后再用 cluster 控制曲线首尾：
-        # pointConstraint 不能直接约束 CV，CV 不是独立节点。
-        first_cluster, first_handle = cmds.cluster(
-            self.curve + ".cv[0]",
-            name="{}_start".format(self.curve_name)
-        )
-        cmds.pointConstraint(self.root_ctrl.name, first_handle)
-
-        last_index = len(positions) - 1
-        last_cluster, last_handle = cmds.cluster(
-            self.curve + ".cv[{}]".format(last_index),
-            name="{}_end".format(self.curve_name)
-        )
-        cmds.pointConstraint(self.tip_ctrl.name, last_handle)
+        # ikHandle 挂到胯部控制器下，跟着整体走
+        cmds.parent(ik_handle[0], self.hip_ctrl.name, absolute=True)
 
         return ik_handle[0]
 
+    def create_curve_drivers(self):
+        u"""控制器约束驱动关节，驱动关节再带动曲线。"""
+
+        cmds.parentConstraint(
+            self.hip_ctrl.name,
+            self.hip_driver.name,
+            maintainOffset=False,
+            name=Name(
+                type="cons", side=self.side, part=self.module,
+                function="hipdrive", index=1
+            ).name
+        )
+
+        cmds.parentConstraint(
+            self.chest_ctrl.name,
+            self.chest_driver.name,
+            maintainOffset=False,
+            name=Name(
+                type="cons", side=self.side, part=self.module,
+                function="chestdrive", index=1
+            ).name
+        )
+
     def create_blend_constraints(self):
-        u"""用 parentConstraint 混合 fk / ik 的世界变换。
-
-        为什么不用 blendColors：
-
-            fk / ik 关节是父子链，局部 translate 天然是 0，
-            混合局部属性等于什么都没做。
-            约束作用于世界变换，混合才真正有效。
+        u"""约束混合 fk / ik 的世界变换。
 
         一个约束挂两个目标：
-
             target[0] = ik 关节，权重 = IkFkBend
             target[1] = fk 关节，权重 = 1 - IkFkBend
         """
 
-        control = self.root_ctrl.name
+        control = self.hip_ctrl.name
 
         for index, bind_jnt in enumerate(self.bind_joints):
             constraint_name = self.blend_constraint_names[index]
@@ -405,19 +505,10 @@ class Spine(RigModule):
     # 开关
     # ------------------------------------------------------------------
 
-    def setup_switch(self):
-        u"""建 IkFkBend 属性并接上可见性。
-
-        单独调用时也能用：已经建过的属性会跳过。
-        """
-
-        self.add_blend_attr()
-        self.setup_visibility()
-
     def add_blend_attr(self):
-        u"""在根控制器上加 IkFkBend 属性。"""
+        u"""在胯部控制器上加 IkFkBend 属性。"""
 
-        control = self.root_ctrl.name
+        control = self.hip_ctrl.name
 
         if cmds.attributeQuery(self.blend_attr, node=control, exists=True):
             return
@@ -432,9 +523,9 @@ class Spine(RigModule):
         )
 
     def create_reverse(self):
-        u"""建反向节点：FK 权重 = 1 - IkFkBend。"""
+        u"""反向节点：FK 权重 = 1 - IkFkBend。"""
 
-        control = self.root_ctrl.name
+        control = self.hip_ctrl.name
 
         if not cmds.objExists(self.reverse_name):
             reverse = cmds.createNode("reverse", name=self.reverse_name)
@@ -451,13 +542,12 @@ class Spine(RigModule):
         return reverse
 
     def setup_visibility(self):
-        u"""让 IK / FK 控制器互斥显示。"""
+        u"""IK / FK 控制器互斥显示。"""
 
-        control = self.root_ctrl.name
+        control = self.hip_ctrl.name
         reverse = self.create_reverse()
 
-        # IK 控制器：IkFkBend=1 可见
-        for ctrl in (self.root_ctrl, self.tip_ctrl):
+        for ctrl in (self.hip_ctrl, self.chest_ctrl):
             zero_grp = ctrl.name.replace("ctrl_", "zero_", 1)
 
             if not cmds.objExists(zero_grp):
@@ -470,7 +560,6 @@ class Spine(RigModule):
                     force=True
                 )
 
-        # FK 控制器：IkFkBend=0 时可见（用反向值）
         if self.fk_ctrls:
             fk_zero = self.fk_ctrls[0].name.replace("ctrl_", "zero_", 1)
 
@@ -487,14 +576,10 @@ class Spine(RigModule):
     # ------------------------------------------------------------------
 
     def set_blend(self, value):
-        u"""设置 IkFkBend。
-
-        Args:
-            value (float): 0 = 全 FK，1 = 全 IK，中间值是过渡。
-        """
+        u"""设置 IkFkBend：0 = 全 FK，1 = 全 IK。"""
 
         cmds.setAttr(
-            self.root_ctrl.name + "." + self.blend_attr,
+            self.hip_ctrl.name + "." + self.blend_attr,
             max(0.0, min(1.0, float(value)))
         )
 
@@ -515,10 +600,23 @@ class Spine(RigModule):
     # ------------------------------------------------------------------
 
     def delete_rig(self):
-        u"""删约束、ikHandle、曲线、反向节点，再删两组。"""
+        u"""删约束、ikHandle、曲线蒙皮、曲线、反向节点，再删总组。"""
+
+        extra_constraints = [
+            Name(
+                type="cons", side=self.side, part=self.module,
+                function="hipdrive", index=1
+            ).name,
+            Name(
+                type="cons", side=self.side, part=self.module,
+                function="chestdrive", index=1
+            ).name,
+        ]
 
         for constraint_name in (
-            self.fk_constraint_names + self.blend_constraint_names
+            self.fk_constraint_names
+            + self.blend_constraint_names
+            + extra_constraints
         ):
             if cmds.objExists(constraint_name):
                 cmds.delete(constraint_name)
@@ -527,10 +625,16 @@ class Spine(RigModule):
             cmds.delete(self.ik_handle_name)
 
         if self.curve and cmds.objExists(self.curve):
-            cmds.delete(self.curve)
+            if self.skin_cluster and cmds.objExists(self.skin_cluster):
+                cmds.delete(self.curve, constructionHistory=False)
+            else:
+                cmds.delete(self.curve)
 
         if cmds.objExists(self.reverse_name):
             cmds.delete(self.reverse_name)
+
+        if cmds.objExists(self.world_grp):
+            cmds.delete(self.world_grp)
 
         delete_nodes = super(Spine, self).delete_rig()
 
@@ -538,8 +642,11 @@ class Spine(RigModule):
         self.ik_joints = []
         self.bind_joints = []
         self.fk_ctrls = []
-        self.root_ctrl = None
-        self.tip_ctrl = None
+        self.hip_ctrl = None
+        self.chest_ctrl = None
+        self.hip_driver = None
+        self.chest_driver = None
         self.curve = None
+        self.skin_cluster = None
 
         return delete_nodes
