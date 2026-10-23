@@ -493,7 +493,14 @@ class Spine(RigModule):
 
 
         # 给 ikHandle 增添横向旋转的功能
+        # 属性组合参照 Maya 属性编辑器「高级扭曲控制」：
+        #   世界上方向类型 = 对象旋转上方向(开始/结束)
+        #   正向轴 = 正 X，上方向轴 = 正 Y
         cmds.setAttr(ik_handle + ".dTwistControlEnable", 1)
+        cmds.setAttr(ik_handle + ".dForwardAxis", 0)       # 0 = Positive X
+        cmds.setAttr(ik_handle + ".dWorldUpAxis", 1)       # 1 = Positive Y
+        cmds.setAttr(ik_handle + ".dWorldUpType", 4)       # 4 = Object Rotation Up (Start/End)
+        cmds.setAttr(ik_handle + ".dTwistValueType", 0)    # 0 = 总计
 
         # 创建两个定位器作为参考向量
         # 用 spaceLocator：createNode('locator') 只建 shape，返回的不是 transform
@@ -531,6 +538,19 @@ class Spine(RigModule):
         ):
             offset_name = loc.replace("loc_", "offset_", 1)
             cmds.parent(offset_name, ctrl.get_output(), absolute=False)
+
+        # 把 locator 的世界矩阵接到 ikHandle 的上方向参考
+        # dWorldUpType=4 时，start/end 两个矩阵分别驱动曲线的起始和末端朝向
+        cmds.connectAttr(
+            ik_twist_loc1 + ".worldMatrix[0]",
+            ik_handle + ".dWorldUpMatrix",
+            force=True
+        )
+        cmds.connectAttr(
+            ik_twist_loc2 + ".worldMatrix[0]",
+            ik_handle + ".dWorldUpMatrixEnd",
+            force=True
+        )
 
         return ik_handle
 
