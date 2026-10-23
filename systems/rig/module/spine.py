@@ -50,7 +50,7 @@ u"""脊柱模块：FK 链 + 样条 IK + skinCluster 驱动曲线。
 
 from maya import cmds
 
-from ....core.common.hierarchy_utils import ensure_group
+from ....core.common.hierarchy_utils import ensure_group, ensure_group_at
 from ....core.common.name_utils import Name
 from ....core.rigging.ctrl_utils import Ctrl
 from .base import RigModule
@@ -182,23 +182,23 @@ class Spine(RigModule):
         ]
 
         self.hip_ctrl_name = Name(
-            type="ctrl", side=self.side, part=self.module,
-            function="hip", index=1
+            type="ctrl", side=self.side, part='hip',
+            function="ik", index=1
         ).name
 
         self.chest_ctrl_name = Name(
-            type="ctrl", side=self.side, part=self.module,
-            function="chest", index=1
+            type="ctrl", side=self.side, part='chest',
+            function="ik", index=1
         ).name
 
         self.hip_driver_name = Name(
-            type="jnt", side=self.side, part=self.module,
-            function="hip", index=1
+            type="jnt", side=self.side, part='hip',
+            function="driver", index=1
         ).name
 
         self.chest_driver_name = Name(
-            type="jnt", side=self.side, part=self.module,
-            function="chest", index=1
+            type="jnt", side=self.side, part='chest',
+            function="driver", index=1
         ).name
 
         self.fk_constraint_names = [
@@ -230,12 +230,23 @@ class Spine(RigModule):
 
         self.ik_handle_name = Name(
             type="ikHandle", side=self.side, part=self.module,
-            function="spine", index=1
+            function="ik", index=1
         ).name
 
+        self.ik_twist_loc1_name = Name(
+            type="loc", side=self.side, part=self.module,
+            function="twist", index=1
+        ).name
+
+        self.ik_twist_loc2_name = Name(
+            type="loc", side=self.side, part=self.module,
+            function="twist", index=2
+        ).name
+
+
         self.skin_cluster_name = Name(
-            type="skinCluster", side=self.side, part=self.module,
-            function="curve", index=1
+            type="skin", side=self.side, part=self.module,
+            function="ik", index=1
         ).name
 
         self.reverse_name = Name(
@@ -296,7 +307,8 @@ class Spine(RigModule):
             shape=self.fk_shape,
             color=self.fk_color,
             size=self.size,
-            axis=self.axis
+            axis='X+',
+        match_rotation = False
         )
 
         self.hip_ctrl = Ctrl.create_ctrl(
@@ -478,6 +490,37 @@ class Spine(RigModule):
 
         # ikHandle 挂到胯部控制器下，跟着整体走
         cmds.parent(ik_handle, self.hip_ctrl.name, absolute=True)
+
+
+        # 给 ikHandle 增添横向旋转的功能
+        cmds.setAttr(ik_handle + ".dTwistControlEnable", 1)
+
+        # 创建两个定位器作为参考向量
+        # 用 spaceLocator：createNode('locator') 只建 shape，返回的不是 transform
+        ik_twist_loc1 = cmds.spaceLocator(name=self.ik_twist_loc1_name)[0]
+        ik_twist_loc2 = cmds.spaceLocator(name=self.ik_twist_loc2_name)[0]
+
+        # 吸附到对应的关节：只吸位置，旋转保持世界对齐
+        cmds.matchTransform(
+            ik_twist_loc1, self.ik_joints[0].name,
+            position=True, rotation=False, scale=False
+        )
+        cmds.matchTransform(
+            ik_twist_loc2, self.ik_joints[-1].name,
+            position=True, rotation=False, scale=False
+        )
+
+        # 给 locator 加层级：loc -> zero -> offset
+        # zero 管位置，offset 留给后面调参考向量的朝向
+        for loc in (ik_twist_loc1, ik_twist_loc2):
+            zero_name = loc.replace("loc_", "zero_", 1)
+            offset_name = loc.replace("loc_", "offset_", 1)
+
+            offset = ensure_group_at(offset_name, loc)
+            zero = ensure_group_at(zero_name, loc)
+
+            cmds.parent(zero, offset)
+            cmds.parent(loc, zero)
 
         return ik_handle
 
