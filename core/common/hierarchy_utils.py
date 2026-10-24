@@ -74,3 +74,69 @@ def ensure_group_at(name, target):
         return group
 
     return name
+
+def get_child_object(object, type="joint"):
+    u"""
+    获取对象下面指定类型的所有子物体，并包含对象本身。
+
+    返回结果统一为 Maya DAG Long Path，并按父级到子级的顺序排列。
+    Maya 的 ``allDescendents`` 会先列孙、再列子，因此这里 append 对象本身后
+    再 reverse，正好得到父级在前的顺序。
+
+    Args:
+        object (str):
+            需要获取子物体的 Maya 场景对象名称。
+        type (str):
+            需要获取的节点类型，默认 "joint"。
+
+    Returns:
+        list[str]:
+            对象本身和所有指定类型子物体的 Long Path 列表。
+
+    Raises:
+        RuntimeError:
+            对象名称为空、对象不存在、不是 DAG 节点，或短名对应多个
+            DAG 节点时抛出。
+    """
+
+    if not object:
+        raise RuntimeError(u"对象名称不能为空。")
+
+    # 组件没有子物体，保持“只返回自身”的旧行为。
+    if "." in object:
+        return [
+            object
+        ]
+
+    if not cmds.objExists(object):
+        raise RuntimeError(
+            u"对象不存在：{}".format(object)
+        )
+
+    matches = cmds.ls(object, long=True) or []
+
+    if len(matches) != 1:
+        raise RuntimeError(
+            u"对象名称不唯一，请使用完整路径：{}".format(object)
+        )
+
+    object = matches[0]
+
+    if not cmds.objectType(object, isAType="dagNode"):
+        raise RuntimeError(
+            u"对象不是 DAG 节点：{}".format(object)
+        )
+
+    object_list = cmds.listRelatives(
+        object,
+        type=type,
+        allDescendents=True,
+        fullPath=True,
+    ) or []
+
+    object_list.append(
+        object
+    )
+    object_list.reverse()
+
+    return object_list
