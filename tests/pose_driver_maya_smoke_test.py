@@ -102,7 +102,10 @@ def build_scene():
     hip_r = cmds.joint(name="Hip_R", position=(8, 0, 0))
 
     cmds.select(clear=True)
-    spine1 = cmds.joint(name="Spine1", position=(0, 12, 0))
+    spine1 = cmds.joint(name="Spine1_M", position=(0, 12, 0))
+
+    cmds.select(clear=True)
+    cmds.createNode("transform", name="FKSpine1_M")
 
     cmds.select(clear=True)
     index = cmds.joint(name="Index_L", position=(0, 16, 0))
@@ -137,7 +140,7 @@ def check_find_supported():
     for name in (
             "Shoulder_L", "Shoulder_R", "Hip_L", "Hip_R",
             "Clavicle_R", "Elbow_R", "Knee_L", "Wrist_R", "Ankle_L",
-            "IndexFinger1_R",
+            "IndexFinger1_R", "Spine1_M",
     ):
         assert name in found, u"没有找到：{}".format(name)
 
@@ -587,7 +590,7 @@ def check_finger(joints):
 def check_spine(joints):
     u"""脊柱：前后左右 + 双向扭转，各 45°。"""
 
-    result = pose_driver_utils.build_network("Spine1")
+    result = pose_driver_utils.build_network("Spine1_M")
     group = result["group"]
 
     assert group == "grp_md_spine_pose_001", u"脊柱归类错误"
@@ -597,7 +600,7 @@ def check_spine(joints):
             u"缺少脊柱属性：{}".format(suffix)
         )
 
-    joint = "Spine1"
+    joint = "Spine1_M"
 
     cmds.setAttr(joint + ".rotateX", 45.0)
     assert abs(cmds.getAttr(group + ".md_spine1_F45") - 1.0) < 1e-5, (

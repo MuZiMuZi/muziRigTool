@@ -168,9 +168,13 @@ finger_angle = 90.0
 
 finger_attribute_suffixes = ("1", "2", "3", "12", "23", "123")
 
-# 脊柱：前后左右 + 双向扭转，各 45°，读关节世界矩阵。
+# 脊柱：ADV 的驱动骨架是 *_M（deform），控制器同名带 FK 前缀。
 spine_parts = ("spine1", "chest")
 spine_angle = 45.0
+spine_controllers = {
+    "spine1": "FKSpine1_M",
+    "chest": "FKChest_M",
+}
 swing_parts = {
     "clavicle": {
         "controller": "FKClavicle",
@@ -212,10 +216,10 @@ adv_joint_map = {
     "Ankle_R": ("rt", "ankle", "leg"),
     "Toe_L": ("lf", "toe", "leg"),
     "Toe_R": ("rt", "toe", "leg"),
-    "Spine1": ("md", "spine1", "spine"),
-    "Spine2": ("md", "spine2", "spine"),
-    "Spine3": ("md", "spine3", "spine"),
-    "Chest": ("md", "chest", "spine"),
+    "Spine1_M": ("md", "spine1", "spine"),
+    "Spine2_M": ("md", "spine2", "spine"),
+    "Spine3_M": ("md", "spine3", "spine"),
+    "Chest_M": ("md", "chest", "spine"),
     "Neck": ("md", "neck", "spine"),
     "Head": ("md", "head", "spine"),
     "Thumb_L": ("lf", "thumb", "finger"),
@@ -332,6 +336,10 @@ def parse_joint_identity(joint):
     """
 
     short_name = joint.split("|")[-1].split(":")[-1]
+
+    # 先精确匹配 ADV 名单（Spine1_M / Chest_M 这类带后缀的关节）
+    if short_name in adv_joint_map:
+        return adv_joint_map[short_name]
 
     parsed = _parse_adv_name(short_name) or _parse_five_part_name(short_name)
 
@@ -1299,7 +1307,10 @@ def _build_finger(joint, side, finger):
 
 
 def _build_spine(joint, side, part, category, neutral_inverse):
-    u"""脊柱：前后左右 + 双向扭转，各 45°，读关节世界矩阵。"""
+    u"""脊柱：前后左右 + 双向扭转，各 45°，读 *_M 变形关节世界矩阵。
+
+    IK 会直接驱动关节链、FK 控制器在 IK 下不可靠，所以读关节世界矩阵。
+    """
 
     part_key = "{}_{}".format(side, part)
 
