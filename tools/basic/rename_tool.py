@@ -166,10 +166,12 @@ class RenameWindow(MayaQWidgetBaseMixin, QtWidgets.QWidget):
         layout = QtWidgets.QVBoxLayout(group)
 
         self.pattern_edit = QtWidgets.QLineEdit()
-        self.pattern_edit.setPlaceholderText(u"例如 ctrl_lf_arm_***")
+        self.pattern_edit.setPlaceholderText(u"例如 ctrl_lf_arm_*** 或 jnt_md_cloth_001")
         layout.addWidget(self.pattern_edit)
 
-        hint = QtWidgets.QLabel(u"连续 * 的数量表示位数，例如 *** 生成 001。")
+        hint = QtWidgets.QLabel(
+            u"* 的数量表示位数（*** → 001）；带序号的完整名称会从该序号递增。"
+        )
         layout.addWidget(hint)
 
         self.pattern_button = QtWidgets.QPushButton(u"模式重命名")

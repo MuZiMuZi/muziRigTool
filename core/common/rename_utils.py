@@ -354,13 +354,16 @@ def auto_number(base_name="", start_number=1, padding=3, number_type=u"数字"):
 # ----------------------------------------------------------------------
 
 def build_pattern_name(pattern, number):
-    u"""把模式里的连续 * 替换成数字编号。
+    u"""按 * 占位或结尾序号生成名称。
 
-    ctrl_lf_arm_***  +  1  ->  ctrl_lf_arm_001
+    ctrl_lf_arm_***   + 1 -> ctrl_lf_arm_001
+    jnt_md_cloth_001  + 2 -> jnt_md_cloth_002
+
+    没有 * 也没有结尾数字时按字面名称返回，不再追加序号。
 
     Args:
-        pattern (str): 含 * 占位符的模式。
-        number (int): 序号。
+        pattern (str): 名称模式。
+        number (int): 序号，从 1 开始。
 
     Returns:
         str: 生成的名称。
@@ -369,7 +372,18 @@ def build_pattern_name(pattern, number):
     star_blocks = re.findall(r"\*+", pattern)
 
     if not star_blocks:
-        return "{}{}".format(pattern, number)
+        trailing_match = re.search(r"(\d+)$", pattern)
+
+        if trailing_match is None:
+            return pattern
+
+        trailing_digits = trailing_match.group(1)
+        current_number = int(trailing_digits) + number - 1
+
+        return "{}{}".format(
+            pattern[:trailing_match.start()],
+            str(current_number).zfill(len(trailing_digits))
+        )
 
     parts = re.split(r"\*+", pattern)
     new_name = parts[0]
@@ -383,12 +397,14 @@ def build_pattern_name(pattern, number):
 
 @undo_chunk
 def pattern_rename(pattern):
-    u"""按 * 占位规则重命名当前选择。
+    u"""按 * 占位规则或结尾序号重命名当前选择。
 
     连续 * 的数量表示数字位数：*** -> 001。
+    输入 jnt_md_cloth_001 时，第一个对象得到 jnt_md_cloth_001，
+    后续对象从该序号继续递增；没有 * 也没有结尾数字时只允许单选。
 
     Args:
-        pattern (str): 例如 ctrl_lf_arm_***。
+        pattern (str): 例如 ctrl_lf_arm_*** 或 jnt_md_cloth_001。
 
     Returns:
         int: 实际改名数量。
@@ -402,6 +418,17 @@ def pattern_rename(pattern):
 
     if not selected:
         return 0
+
+    has_star_placeholder = "*" in pattern
+    has_trailing_number = re.search(r"\d+$", pattern) is not None
+
+    if not has_star_placeholder and not has_trailing_number:
+        if len(selected) > 1:
+            cmds.warning(
+                u"模式命名：多个对象请使用 * 占位或带序号的完整名称，"
+                u"例如 ctrl_lf_arm_*** 或 jnt_md_cloth_001。"
+            )
+            return 0
 
     count = 0
 

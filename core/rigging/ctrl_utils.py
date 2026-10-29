@@ -9,6 +9,7 @@ u"""Controller 基础操作。
 
     subctrl 与 output 是兄弟，隐藏 subctrl 不会影响 output 下的子物体；
     subctrl 的变换通过属性连接传给 output。
+    主 ctrl 上的 sub_ctrl_vis 控制 subctrl 是否显示，默认关闭（隐藏）。
 
 约定：
 
@@ -26,6 +27,7 @@ import os
 
 import maya.cmds as cmds
 
+from ..common.attr_utils import Attr
 from ..common.hierarchy_utils import ensure_group_at
 
 
@@ -670,6 +672,27 @@ class Ctrl(object):
 
             if not cmds.isConnected(source, target):
                 cmds.connectAttr(source, target, force=True)
+
+        # 主控制器上的 sub_ctrl_vis 控制 subctrl 是否显示。
+        # 默认 0：新建控制器的次级控制器先隐藏，需要时在 Channel Box 里打开。
+        ctrl_attr = Attr(self.name)
+
+        if not ctrl_attr.attr_exists("sub_ctrl_vis"):
+            ctrl_attr.add_attr(
+                "sub_ctrl_vis",
+                attr_type="bool",
+                default=0
+            )
+
+        visibility_source = self.name + ".sub_ctrl_vis"
+        visibility_target = sub.name + ".visibility"
+
+        if not cmds.isConnected(visibility_source, visibility_target):
+            cmds.connectAttr(
+                visibility_source,
+                visibility_target,
+                force=True
+            )
 
         return sub
 

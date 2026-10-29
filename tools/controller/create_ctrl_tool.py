@@ -216,6 +216,9 @@ class CreateCtrlWindow(MayaQWidgetBaseMixin, QtWidgets.QWidget):
         layout.addLayout(form)
 
         self.hierarchy_check = QtWidgets.QCheckBox(u"创建完整层级（含 subctrl 与 output）")
+        self.hierarchy_check.setToolTip(
+            u"subctrl 由主控制器上的 sub_ctrl_vis 开关控制，创建时默认隐藏。"
+        )
         self.hierarchy_check.setChecked(True)
         layout.addWidget(self.hierarchy_check)
 
@@ -248,28 +251,35 @@ class CreateCtrlWindow(MayaQWidgetBaseMixin, QtWidgets.QWidget):
 
         created = []
 
-        for target in targets:
-            try:
-                ctrl = Ctrl.create_ctrl(
-                    name,
-                    shape=self.get_shape_name(),
-                    color=self.color_picker.ctrl_color,
-                    size=self.size_picker.ctrl_size,
-                    axis=self.axis_combo.currentText(),
-                    target=target,
-                    hierarchy=self.hierarchy_check.isChecked()
-                )
-            except Exception as error:
-                # 单个失败不影响后面的物体，跳过并继续下一个序号。
-                print(u"创建失败（{}）：{}".format(name, error))
+        # 一次点击创建的全部控制器、层级、parent / constraint 都放进同一个
+        # Undo Chunk：按一次 Ctrl+Z 就能整批回退，而不是逐个控制器撤销。
+        cmds.undoInfo(openChunk=True, chunkName="CreateControllers")
+
+        try:
+            for target in targets:
+                try:
+                    ctrl = Ctrl.create_ctrl(
+                        name,
+                        shape=self.get_shape_name(),
+                        color=self.color_picker.ctrl_color,
+                        size=self.size_picker.ctrl_size,
+                        axis=self.axis_combo.currentText(),
+                        target=target,
+                        hierarchy=self.hierarchy_check.isChecked()
+                    )
+                except Exception as error:
+                    # 单个失败不影响后面的物体，跳过并继续下一个序号。
+                    print(u"创建失败（{}）：{}".format(name, error))
+                    name = self.next_name(name)
+                    continue
+
+                self.apply_operation(ctrl, [target] if target else [])
+                created.append(ctrl.name)
+                print(u"已创建：{}".format(ctrl.name))
+
                 name = self.next_name(name)
-                continue
-
-            self.apply_operation(ctrl, [target] if target else [])
-            created.append(ctrl.name)
-            print(u"已创建：{}".format(ctrl.name))
-
-            name = self.next_name(name)
+        finally:
+            cmds.undoInfo(closeChunk=True)
 
         # 输入框停在下一个可用名称上，方便连续创建。
         self.name_edit.setText(name)
