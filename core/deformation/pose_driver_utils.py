@@ -97,6 +97,11 @@ direction_suffix = {
     "back_down": "B45D45",
 }
 
+# 按部位覆盖单轴方向的命名角度：手臂下压只需要 45°，不再叫 D90。
+eight_direction_angle_overrides = {
+    "shoulder": {"down": 45},
+}
+
 # 八方向门控只适合两轴大范围摆动的部位：上臂（Shoulder）与大腿（Hip）。
 # arm / thigh 是五段式命名下的等价写法，保留兼容。
 eight_direction_parts = ("shoulder", "arm", "hip", "thigh")
@@ -641,7 +646,7 @@ def build_network(
         attribute_names = {}
 
         for direction in direction_names:
-            attribute = part_key + "_" + direction_suffix[direction]
+            attribute = part_key + "_" + _direction_suffix(part, direction)
             _add_weight_attr(group, attribute)
             added_attrs.append(attribute)
             attribute_names[direction] = attribute
@@ -665,7 +670,7 @@ def build_network(
                 group + "." + attribute_names[direction],
                 combo + ".output",
                 part_key,
-                direction_suffix[direction],
+                _direction_suffix(part, direction),
                 created_nodes,
             )
 
@@ -1765,6 +1770,26 @@ def delete_all_parts():
 # ----------------------------------------------------------------------
 # 内部：解析
 # ----------------------------------------------------------------------
+
+def _direction_suffix(part, direction):
+    u"""返回方向属性后缀，支持按部位覆盖单轴命名角度。"""
+
+    overrides = eight_direction_angle_overrides.get(part) or {}
+    angle = overrides.get(direction)
+
+    if angle:
+        letter = {
+            "up": "U",
+            "down": "D",
+            "front": "F",
+            "back": "B",
+        }.get(direction)
+
+        if letter:
+            return letter + str(int(angle))
+
+    return direction_suffix[direction]
+
 
 def _parse_adv_name(short_name):
     u"""解析 ADV 命名，例如 Shoulder_L / Spine1。"""

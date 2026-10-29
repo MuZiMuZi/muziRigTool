@@ -166,7 +166,7 @@ def check_groups(joint):
 
     result = pose_driver_utils.build_network(
         joint,
-        directions=("up", "front_up", "back"),
+        directions=("up", "down", "front_up", "back"),
     )
 
     for category in ("arm", "spine", "leg", "finger"):
@@ -204,6 +204,13 @@ def check_attributes(result):
         assert cmds.attributeQuery(attribute, node=group, exists=True), (
             u"缺少方向属性：{}".format(attribute)
         )
+
+    assert cmds.attributeQuery("lf_shoulder_D45", node=group, exists=True), (
+        u"手臂下压没有生成 D45"
+    )
+    assert not cmds.attributeQuery(
+        "lf_shoulder_D90", node=group, exists=True
+    ), u"手臂下压不应再生成 D90"
 
     separator = "sep_lf_shoulder"
 

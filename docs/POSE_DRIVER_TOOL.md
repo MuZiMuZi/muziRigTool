@@ -125,7 +125,7 @@ grp_md_all_pose_001          总组
 grp_md_arm_pose_001
   sep_lf_shoulder     0.0   ← double、锁定、Channel Box 显示，只作分隔
   lf_shoulder_U90     0.0
-  lf_shoulder_D90     0.0
+  lf_shoulder_D45     0.0
   lf_shoulder_F90     0.0
   lf_shoulder_B70     0.0
   lf_shoulder_F45U45  0.0
@@ -141,7 +141,7 @@ grp_md_arm_pose_001
 | 方向 | 后缀 | 方向 | 后缀 |
 |---|---|---|---|
 | up | U90 | front_up | F45U45 |
-| down | D90 | front_down | F45D45 |
+| down | D90（手臂下压为 D45） | front_down | F45D45 |
 | front | F90 | back_up | B45U45 |
 | back | B70 | back_down | B45D45 |
 
