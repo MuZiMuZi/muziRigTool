@@ -2564,6 +2564,13 @@ def _create_driven_key(driven_plug, driver_plug, part_key, direction, nodes):
         driverValue=0.0,
         value=0.0,
     )
+    # 中间点 (0.5, 0.25)：前段平缓、后段加速，接近主人给的参考曲线
+    cmds.setDrivenKeyframe(
+        driven_plug,
+        currentDriver=driver_plug,
+        driverValue=0.5,
+        value=0.25,
+    )
     cmds.setDrivenKeyframe(
         driven_plug,
         currentDriver=driver_plug,
@@ -2576,9 +2583,8 @@ def _create_driven_key(driven_plug, driver_plug, part_key, direction, nodes):
     ) or []
 
     for curve in curves:
-        # 默认用 flat 切线：两端平缓、中段陡，呈平滑 S 形
         cmds.keyTangent(
-            curve, inTangentType="flat", outTangentType="flat"
+            curve, inTangentType="auto", outTangentType="auto"
         )
 
         renamed = cmds.rename(

@@ -244,14 +244,16 @@ def check_attributes(result):
 
     key_values = cmds.keyframe(curves[0], query=True, valueChange=True) or []
 
-    assert key_values == [0.0, 1.0], u"曲线端点不对：{}".format(key_values)
+    assert key_values == [0.0, 0.25, 1.0], (
+        u"曲线 key 值不对：{}".format(key_values)
+    )
 
     tangents = cmds.keyTangent(
         curves[0], query=True, inTangentType=True
     ) or []
 
-    assert tangents and tangents[0] == "flat", (
-        u"曲线默认切线不是 flat：{}".format(tangents)
+    assert tangents and tangents[0] == "auto", (
+        u"曲线端点切线不是 auto：{}".format(tangents)
     )
 
     indicator = result["indicator"]
@@ -278,8 +280,8 @@ def check_weights(joint, result):
     )
 
     cmds.setAttr(joint + ".rotateY", -22.5)
-    assert abs(cmds.getAttr(group + ".lf_shoulder_U90") - 0.5) < 1e-5, (
-        u"半程 U90 不是 0.5"
+    assert abs(cmds.getAttr(group + ".lf_shoulder_U90") - 0.25) < 1e-5, (
+        u"半程 U90 不是 0.25（新曲线为 t² 形状）"
     )
 
     cmds.setAttr(joint + ".rotateY", -120.0)
@@ -321,8 +323,8 @@ def check_back_angle(joint, result):
     )
 
     cmds.setAttr(joint + ".rotateZ", -35.0)
-    assert abs(cmds.getAttr(group + ".lf_shoulder_B70") - 0.5) < 1e-5, (
-        u"后摆半程 B70 不是 0.5"
+    assert abs(cmds.getAttr(group + ".lf_shoulder_B70") - 0.25) < 1e-5, (
+        u"后摆半程 B70 不是 0.25（新曲线为 t² 形状）"
     )
 
     cmds.setAttr(joint + ".rotateZ", -45.0)
