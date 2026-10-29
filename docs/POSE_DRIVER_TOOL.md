@@ -66,7 +66,7 @@ pose_driver_utils.delete_all_parts()
 | `Knee_L` / `Knee_R` | lf / rt | knee | leg | ✅ 单轴多角度 F45 / F90 / F120 |
 | `Ankle_L` / `Ankle_R` | lf / rt | ankle | leg | ✅ 四方向 + 双向扭转 |
 | `Toe_L` / `Toe_R` | lf / rt | toe | leg | 跳过 |
-| `Spine1_M` / `Chest_M` | md | spine1 / chest | `grp_md_spine_pose_001` | ✅ F45 / B45 / L45 / R45 / 双向扭转（读 `*_M` 变形关节世界矩阵） |
+| `Spine1_M` / `Chest_M` | md | spine1 / chest | `grp_md_spine_pose_001` | ✅ F45 / B45 / L45 / R45 / 双向扭转（辅助关节 + orientConstraint） |
 | `ThumbFinger/IndexFinger/MiddleFinger/RingFinger/PinkyFinger 1~4_L/R` | lf / rt | 手指 | `grp_md_finger_pose_001` | ✅ 整指：1/2/3 节 + 融合 |
 
 八方向只给两轴大范围摆动的上臂与大腿。

@@ -1306,17 +1306,47 @@ def _build_finger(joint, side, finger):
     }
 
 
-def _build_spine(joint, side, part, category, neutral_inverse):
-    u"""脊柱：前后左右 + 双向扭转，各 45°，读 *_M 变形关节世界矩阵。
+def _build_spine_driver(joint, part_key, nodes):
+    u"""建脊柱辅助关节：同位置、无 jointOrient，用 orientConstraint 跟随。
 
-    IK 会直接驱动关节链、FK 控制器在 IK 下不可靠，所以读关节世界矩阵。
+    Args:
+        joint (str): 变形关节（Spine1_M / Chest_M）。
+        part_key (str): 部位 key，用于命名。
+        nodes (list): 节点清理清单。
+
+    Returns:
+        str: 辅助关节名。
+    """
+
+    position = cmds.xform(
+        joint, query=True, translation=True, worldSpace=True
+    )
+
+    driver = cmds.createNode(
+        "joint", name="joint_md_" + part_key + "_driver_001"
+    )
+    cmds.xform(driver, translation=position, worldSpace=True)
+    cmds.setAttr(driver + ".jointOrient", 0.0, 0.0, 0.0, type="double3")
+    cmds.setAttr(driver + ".rotate", 0.0, 0.0, 0.0)
+
+    constraint = cmds.orientConstraint(
+        joint, driver, maintainOffset=False
+    )[0]
+
+    nodes.append(constraint)
+    nodes.append(driver)
+
+    return driver
+
+
+def _build_spine(joint, side, part, category, neutral_inverse):
+    u"""脊柱：前后左右 + 双向扭转，各 45°。
+
+    额外建一个同位置、无 jointOrient 的辅助关节，用 orientConstraint
+    跟着变形关节走；读辅助关节的局部 rotate，轴干净、IK/FK 都有效。
     """
 
     part_key = "{}_{}".format(side, part)
-
-    if neutral_inverse is None:
-        neutral_inverse = get_world_inverse(joint)
-
     created_nodes = []
     added_attrs = []
     group = None
@@ -1331,14 +1361,33 @@ def _build_spine(joint, side, part, category, neutral_inverse):
         if part_key in config:
             _remove_part(group, config, part_key)
 
-        delta_x = _build_delta(
-            part_key, "x", joint, "rotateX", neutral_inverse, created_nodes
+        driver_joint = _build_spine_driver(joint, part_key, created_nodes)
+
+        neutral = {
+            axis: float(cmds.getAttr(driver_joint + "." + axis))
+            for axis in ("rotateX", "rotateY", "rotateZ")
+        }
+
+        delta_x = _build_channel_delta(
+            part_key,
+            "x",
+            driver_joint + ".rotateX",
+            neutral["rotateX"],
+            created_nodes,
         )
-        delta_y = _build_delta(
-            part_key, "y", joint, "rotateY", neutral_inverse, created_nodes
+        delta_y = _build_channel_delta(
+            part_key,
+            "y",
+            driver_joint + ".rotateY",
+            neutral["rotateY"],
+            created_nodes,
         )
-        delta_z = _build_delta(
-            part_key, "z", joint, "rotateZ", neutral_inverse, created_nodes
+        delta_z = _build_channel_delta(
+            part_key,
+            "z",
+            driver_joint + ".rotateZ",
+            neutral["rotateZ"],
+            created_nodes,
         )
 
         specs = (
@@ -1362,7 +1411,7 @@ def _build_spine(joint, side, part, category, neutral_inverse):
             added_attrs.append(attribute)
             attributes[suffix] = attribute
 
-        indicator = _create_indicator(joint, part_key, created_nodes)
+        indicator = _create_indicator(driver_joint, part_key, created_nodes)
 
         for suffix, delta, sign in specs:
             gate = _build_gate(
@@ -1382,7 +1431,8 @@ def _build_spine(joint, side, part, category, neutral_inverse):
             "part": part,
             "category": category,
             "mode": "spine",
-            "neutral_inverse": list(neutral_inverse),
+            "driver_joint": driver_joint,
+            "neutral": neutral,
             "separator": separator,
             "attributes": attributes,
             "indicator": indicator,
@@ -1417,7 +1467,8 @@ def _build_spine(joint, side, part, category, neutral_inverse):
         "part": part,
         "category": category,
         "mode": "spine",
-        "neutral_inverse": list(neutral_inverse),
+        "driver_joint": driver_joint,
+        "neutral": dict(neutral),
         "separator": separator,
         "attributes": dict(attributes),
         "indicator": indicator,
