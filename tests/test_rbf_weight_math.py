@@ -72,5 +72,45 @@ class WeightsTest(unittest.TestCase):
             rbf_weight_math.rbf_weights([0.0], [], 45.0)
 
 
+class TrainTest(unittest.TestCase):
+    u"""精确插值训练。"""
+
+    def test_coefficients_shape(self):
+        centers = [[0, 0, 0], [0, -90, 0], [0, 90, 0]]
+        coefficients = rbf_weight_math.train_coefficients(
+            centers, 0, 45.0, [1.0, 1.0, 1.0]
+        )
+
+        self.assertEqual(len(coefficients), 3)
+
+        for row in coefficients:
+            self.assertEqual(len(row), 2)
+
+    def test_sample_point_returns_one(self):
+        centers = [[0, 0, 0], [0, -90, 0], [0, 90, 0]]
+        coefficients = rbf_weight_math.train_coefficients(
+            centers, 0, 45.0, [1.0, 1.0, 1.0]
+        )
+
+        weights = [
+            sum(
+                rbf_weight_math.gaussian_kernel(
+                    rbf_weight_math.scaled_distance_squared(
+                        centers[1], center, [1.0, 1.0, 1.0]
+                    ),
+                    45.0,
+                )
+                * coefficients[index][0]
+                for index, center in enumerate(centers)
+            )
+        ]
+
+        self.assertAlmostEqual(weights[0], 1.0, places=6)
+
+    def test_empty_samples_raises(self):
+        with self.assertRaises(ValueError):
+            rbf_weight_math.train_coefficients([], 0, 45.0)
+
+
 if __name__ == "__main__":
     unittest.main()
