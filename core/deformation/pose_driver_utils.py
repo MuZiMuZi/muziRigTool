@@ -1307,15 +1307,16 @@ def _build_finger(joint, side, finger):
 
 
 def _build_spine(joint, side, part, category, neutral_inverse):
-    u"""脊柱：前后左右 + 双向扭转，各 45°，读 *_M 变形关节世界矩阵。
+    u"""脊柱：前后左右 + 双向扭转，各 45°，读 *_M 变形关节的 local rotate。
 
-    IK 会直接驱动关节链、FK 控制器在 IK 下不可靠，所以读关节世界矩阵。
+    实测 ADV 约束驱动会改变形关节的 local rotate，父级旋转也不会串进来。
     """
 
     part_key = "{}_{}".format(side, part)
-
-    if neutral_inverse is None:
-        neutral_inverse = get_world_inverse(joint)
+    neutral = {
+        axis: float(cmds.getAttr(joint + "." + axis))
+        for axis in ("rotateX", "rotateY", "rotateZ")
+    }
 
     created_nodes = []
     added_attrs = []
@@ -1331,14 +1332,17 @@ def _build_spine(joint, side, part, category, neutral_inverse):
         if part_key in config:
             _remove_part(group, config, part_key)
 
-        delta_x = _build_delta(
-            part_key, "x", joint, "rotateX", neutral_inverse, created_nodes
+        delta_x = _build_channel_delta(
+            part_key, "x", joint + ".rotateX", neutral["rotateX"],
+            created_nodes
         )
-        delta_y = _build_delta(
-            part_key, "y", joint, "rotateY", neutral_inverse, created_nodes
+        delta_y = _build_channel_delta(
+            part_key, "y", joint + ".rotateY", neutral["rotateY"],
+            created_nodes
         )
-        delta_z = _build_delta(
-            part_key, "z", joint, "rotateZ", neutral_inverse, created_nodes
+        delta_z = _build_channel_delta(
+            part_key, "z", joint + ".rotateZ", neutral["rotateZ"],
+            created_nodes
         )
 
         specs = (
@@ -1382,7 +1386,7 @@ def _build_spine(joint, side, part, category, neutral_inverse):
             "part": part,
             "category": category,
             "mode": "spine",
-            "neutral_inverse": list(neutral_inverse),
+            "neutral": neutral,
             "separator": separator,
             "attributes": attributes,
             "indicator": indicator,
@@ -1417,7 +1421,7 @@ def _build_spine(joint, side, part, category, neutral_inverse):
         "part": part,
         "category": category,
         "mode": "spine",
-        "neutral_inverse": list(neutral_inverse),
+        "neutral": dict(neutral),
         "separator": separator,
         "attributes": dict(attributes),
         "indicator": indicator,
