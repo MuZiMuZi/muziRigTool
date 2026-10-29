@@ -49,6 +49,10 @@ group_names = {
     "finger": "grp_md_finger_pose_001",
 }
 
+# 裙子修型组：镜像腿部属性，再乘以 leg_follow（是否跟随腿部）。
+skirt_group_name = "grp_md_skirt_pose_001"
+skirt_follow_attr = "leg_follow"
+
 # 四个汇总组统一收进这个总组。
 master_group_name = "grp_md_all_pose_001"
 
@@ -489,6 +493,129 @@ def get_or_create_master_group():
     return group
 
 
+def get_or_create_skirt_group():
+    u"""获取或创建裙子修型组，并保证 leg_follow 属性存在。
+
+    Returns:
+        str: 组名。
+    """
+
+    master = get_or_create_master_group()
+
+    if cmds.objExists(skirt_group_name):
+        _validate_group(skirt_group_name)
+        group = skirt_group_name
+    else:
+        group = cmds.createNode("transform", name=skirt_group_name)
+        _add_owner_attrs(group)
+
+    _hide_transform_attrs(group)
+
+    if not cmds.attributeQuery(skirt_follow_attr, node=group, exists=True):
+        cmds.addAttr(
+            group,
+            longName=skirt_follow_attr,
+            attributeType="double",
+            defaultValue=1.0,
+            minValue=0.0,
+            maxValue=1.0,
+            keyable=True,
+        )
+
+    parents = cmds.listRelatives(group, parent=True, fullPath=True) or []
+    current_parent = parents[0].split("|")[-1] if parents else None
+
+    if current_parent != master:
+        group = cmds.parent(group, master)[0]
+
+    _hide_transform_attrs(group)
+
+    return group
+
+
+def build_skirt_links():
+    u"""把腿组的部位属性 × leg_follow 连到裙子组。
+
+    裙组属性名与腿组一致，只作为裙子修型的驱动源，不直接手 K。
+
+    Returns:
+        tuple: (裙组名, 新建的 multDoubleLinear 节点列表)。
+    """
+
+    skirt = get_or_create_skirt_group()
+    leg_group = get_or_create_group("leg")
+    leg_config = read_group_config(leg_group)
+
+    _clear_skirt_links()
+
+    created_nodes = []
+
+    for part_key in sorted(leg_config):
+        attributes = leg_config[part_key].get("attributes") or {}
+
+        for suffix in sorted(attributes):
+            attribute = attributes[suffix]
+            mirror_attribute = "skirt_" + attribute
+
+            if not cmds.attributeQuery(
+                    mirror_attribute, node=skirt, exists=True
+            ):
+                _add_weight_attr(skirt, mirror_attribute)
+
+            node = cmds.createNode(
+                "multDoubleLinear",
+                name="mult_{}_{}LegFollow_001".format(part_key, suffix),
+            )
+            cmds.connectAttr(leg_group + "." + attribute, node + ".input1")
+            cmds.connectAttr(
+                skirt + "." + skirt_follow_attr, node + ".input2"
+            )
+            cmds.connectAttr(
+                node + ".output", skirt + "." + mirror_attribute
+            )
+            cmds.setAttr(
+                skirt + "." + mirror_attribute,
+                keyable=False,
+                channelBox=True,
+            )
+
+            created_nodes.append(node)
+
+    return skirt, created_nodes
+
+
+def _clear_skirt_links():
+    u"""清掉裙子组上的镜像属性与连接，保留组与 leg_follow。"""
+
+    if not cmds.objExists(skirt_group_name):
+        return
+
+    for attribute in cmds.listAttr(
+            skirt_group_name, userDefined=True
+    ) or []:
+        if attribute == skirt_follow_attr:
+            continue
+
+        plug = skirt_group_name + "." + attribute
+
+        if not cmds.attributeQuery(attribute, node=skirt_group_name, exists=True):
+            continue
+
+        sources = cmds.listConnections(
+            plug, source=True, destination=False
+        ) or []
+
+        if sources:
+            cmds.delete(sources)
+
+        try:
+            cmds.setAttr(plug, lock=False)
+        except RuntimeError:
+            pass
+
+        cmds.deleteAttr(plug)
+
+
 def ensure_all_groups():
     u"""补齐总组与四个汇总组，并把汇总组收进总组。"""
 
@@ -506,6 +633,8 @@ def ensure_all_groups():
             group = cmds.parent(group, master)[0]
 
         groups.append(group)
+
+    get_or_create_skirt_group()
 
     return groups
 
@@ -2016,6 +2145,11 @@ def build_all_supported(
         except Exception as error:
             errors.append((item["short"], str(error)))
 
+    try:
+        build_skirt_links()
+    except Exception as error:
+        errors.append(("skirt", str(error)))
+
     return results, errors
 
 
@@ -2039,6 +2173,8 @@ def delete_all_parts():
         for part_key in list(config):
             delete_part(group, part_key)
             removed += 1
+
+    _clear_skirt_links()
 
     return removed
 

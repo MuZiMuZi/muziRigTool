@@ -114,11 +114,20 @@ grp_md_all_pose_001          总组
 ├─ grp_md_arm_pose_001
 ├─ grp_md_spine_pose_001
 ├─ grp_md_leg_pose_001
-└─ grp_md_finger_pose_001
+├─ grp_md_finger_pose_001
+└─ grp_md_skirt_pose_001      裙子组
 ```
 
-四个汇总组都收进总组；组上的默认 transform 属性（translate / rotate / scale / visibility）
+四个汇总组和裙子组都收进总组；组上的默认 transform 属性（translate / rotate / scale / visibility）
 已隐藏，Channel Box 只显示方向属性。
+
+### 2.2 裙子组
+
+- `leg_follow`：double（0~1），控制裙子是否跟随腿部运动；
+- 腿组每个部位属性都会镜像到裙子组，名字加 `skirt_` 前缀，如 `skirt_lf_hip_F90`，与腿组自己的 `lf_hip_F90` 明确区分；
+- 连接方式：`腿组属性 × leg_follow → multDoubleLinear → skirt_<属性>`（`mult_<side>_<part>_<后缀>LegFollow_001`）；
+- 裙子组属性只作为未来裙子修型的驱动源，不直接手 K；
+- 一键生成全部时自动建立连接；删除全部时清掉镜像属性与节点，保留组和 `leg_follow`。
 
 ### 2.2 组内属性
 

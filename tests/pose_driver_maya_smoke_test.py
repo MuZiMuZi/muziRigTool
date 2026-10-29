@@ -195,7 +195,14 @@ def check_groups(joint):
         "sep_lf", node="grp_md_finger_pose_001", exists=True
     ), u"手指组本轮不应有属性"
 
-    print(u"[ok] 四个汇总组 + 总组 + 默认属性隐藏")
+    skirt_group = "grp_md_skirt_pose_001"
+
+    assert cmds.objExists(skirt_group), u"缺少裙子组"
+    assert cmds.attributeQuery(
+        "leg_follow", node=skirt_group, exists=True
+    ), u"裙子组缺少 leg_follow"
+
+    print(u"[ok] 四个汇总组 + 总组 + 裙子组 + 默认属性隐藏")
 
     return result
 
@@ -652,6 +659,43 @@ def check_build_all(joints):
     print(u"[ok] 一键生成全部：{}".format(part_keys))
 
 
+def check_skirt():
+    u"""裙子组：leg_follow × 腿部属性。"""
+
+    group = "grp_md_skirt_pose_001"
+
+    assert cmds.objExists(group), u"缺少裙子组"
+    assert cmds.attributeQuery("leg_follow", node=group, exists=True), (
+        u"缺少 leg_follow"
+    )
+    assert cmds.attributeQuery(
+        "skirt_lf_hip_F90", node=group, exists=True
+    ), u"裙组没有镜像腿部属性"
+
+    hip = "Hip_L"
+    cmds.setAttr(hip + ".rotateZ", 90.0)
+
+    assert abs(
+        cmds.getAttr("grp_md_leg_pose_001.lf_hip_F90") - 1.0
+    ) < 1e-5, u"腿组 lf_hip_F90 没到 1"
+
+    cmds.setAttr(group + ".leg_follow", 0.0)
+
+    assert abs(cmds.getAttr(group + ".skirt_lf_hip_F90")) < 1e-5, (
+        u"leg_follow=0 时裙组属性应归零"
+    )
+
+    cmds.setAttr(group + ".leg_follow", 1.0)
+
+    assert abs(
+        cmds.getAttr(group + ".skirt_lf_hip_F90") - 1.0
+    ) < 1e-5, u"leg_follow=1 时裙组属性应跟随"
+
+    cmds.setAttr(hip + ".rotateZ", 0.0)
+
+    print(u"[ok] 裙子组：leg_follow + 腿部属性镜像")
+
+
 def check_delete_all():
     u"""删除全部后组还在，部位清空。"""
 
@@ -732,6 +776,7 @@ def main():
     check_spine(joints)
 
     check_build_all(joints)
+    check_skirt()
     check_delete_all()
 
     check_bad_input(joints)
