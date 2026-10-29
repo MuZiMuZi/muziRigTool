@@ -750,14 +750,6 @@ def build_network(
 
     part_key = "{}_{}".format(side, part)
 
-    if neutral is None:
-        neutral = get_neutral_rotate(joint, axes)
-
-    neutral = {axis: float(neutral[axis]) for axis in axes}
-
-    if neutral_inverse is None:
-        neutral_inverse = get_world_inverse(joint)
-
     created_nodes = []
     added_attrs = []
     group = None
@@ -773,11 +765,16 @@ def build_network(
         if part_key in config:
             _remove_part(group, config, part_key)
 
-        delta_a = _build_delta(
-            part_key, "a", joint, axes[0], neutral_inverse, created_nodes
+        driver_joint = _build_aux_joint(
+            joint, part_key, "driver", created_nodes
         )
-        delta_b = _build_delta(
-            part_key, "b", joint, axes[1], neutral_inverse, created_nodes
+        neutral = _read_aux_neutral(driver_joint, axes)
+
+        delta_a = _aux_delta(
+            part_key, "a", driver_joint, axes[0], neutral, created_nodes
+        )
+        delta_b = _aux_delta(
+            part_key, "b", driver_joint, axes[1], neutral, created_nodes
         )
 
         gates = {
@@ -849,7 +846,7 @@ def build_network(
             "angle_map": dict(angle_map),
             "directions": list(direction_names),
             "neutral": neutral,
-            "neutral_inverse": list(neutral_inverse),
+            "driver_joint": driver_joint,
             "separator": separator,
             "attributes": attribute_names,
             "indicator": indicator,
@@ -888,7 +885,7 @@ def build_network(
         "angle_map": dict(angle_map),
         "directions": list(direction_names),
         "neutral": dict(neutral),
-        "neutral_inverse": list(neutral_inverse),
+        "driver_joint": driver_joint,
         "separator": separator,
         "attributes": dict(attribute_names),
         "indicator": indicator,
@@ -1160,9 +1157,6 @@ def _build_finger(joint, side, finger):
     suffix = "_L" if side == "lf" else "_R"
     wrist = "Wrist" + suffix
     names = [base + str(segment) + suffix for segment in range(1, 5)]
-    controllers = [
-        "FK" + base + str(segment) + suffix for segment in range(1, 4)
-    ]
     part_key = "{}_{}".format(side, finger)
 
     if not cmds.objExists(wrist):
@@ -1171,12 +1165,6 @@ def _build_finger(joint, side, finger):
     for name in names:
         if not cmds.objExists(name):
             raise RuntimeError(u"缺少手指关节，收到：{}".format(name))
-
-    for name in controllers:
-        if not cmds.objExists(name):
-            raise RuntimeError(
-                u"缺少手指控制器，收到：{}".format(name)
-            )
 
     created_nodes = []
     added_attrs = []
@@ -1194,18 +1182,36 @@ def _build_finger(joint, side, finger):
 
         neutral_angles = []
         gates = []
+        driver_locators = []
 
-        # 手指是纯 FK，直接读控制器 rotateY，比骨骼链夹角更直观准确
-        for index, controller in enumerate(controllers):
-            plug = controller + ".rotateY"
-            neutral_value = float(cmds.getAttr(plug))
+        # 每节建一个辅助定位器跟随指节，读 rotateY 弯曲角；
+        # 后一节挂到前一个定位器下，读到的是「相对上一节」的弯曲
+        previous_locator = None
+
+        for index in range(3):
+            locator = _build_aux_joint(
+                names[index], part_key, "s" + str(index + 1),
+                created_nodes
+            )
+
+            if previous_locator:
+                locator = cmds.parent(
+                    locator, previous_locator, absolute=True
+                )[0]
+
+            previous_locator = locator
+            driver_locators.append(locator)
+
+            neutral_value = _read_aux_neutral(
+                locator, ("rotateY",)
+            )["rotateY"]
             neutral_angles.append(neutral_value)
 
             gates.append(
                 _build_gate_between(
                     part_key,
                     "g" + str(index + 1),
-                    plug,
+                    locator + ".rotateY",
                     neutral_value,
                     finger_angle,
                     created_nodes,
@@ -1261,7 +1267,7 @@ def _build_finger(joint, side, finger):
             "part": finger,
             "category": "finger",
             "mode": "finger",
-            "controllers": controllers,
+            "driver_locators": driver_locators,
             "segments": [1, 2, 3],
             "neutral_angles": neutral_angles,
             "separator": separator,
@@ -1306,37 +1312,54 @@ def _build_finger(joint, side, finger):
     }
 
 
-def _build_spine_driver(joint, part_key, nodes):
-    u"""建脊柱辅助关节：同位置、无 jointOrient，用 orientConstraint 跟随。
+def _build_aux_joint(joint, part_key, role, nodes):
+    u"""建辅助定位器：同位置、朝向干净，用 orientConstraint 跟随关节。
 
     Args:
-        joint (str): 变形关节（Spine1_M / Chest_M）。
+        joint (str): 被跟随的变形关节。
         part_key (str): 部位 key，用于命名。
+        role (str): 辅助角色（driver / s1 / s2 ...）。
         nodes (list): 节点清理清单。
 
     Returns:
-        str: 辅助关节名。
+        str: 辅助定位器名。
     """
 
     position = cmds.xform(
         joint, query=True, translation=True, worldSpace=True
     )
 
-    driver = cmds.createNode(
-        "joint", name="joint_md_" + part_key + "_driver_001"
-    )
-    cmds.xform(driver, translation=position, worldSpace=True)
-    cmds.setAttr(driver + ".jointOrient", 0.0, 0.0, 0.0, type="double3")
-    cmds.setAttr(driver + ".rotate", 0.0, 0.0, 0.0)
+    locator = cmds.spaceLocator(
+        name="loc_" + part_key + "_" + role + "_001"
+    )[0]
+    cmds.xform(locator, translation=position, worldSpace=True)
+    cmds.setAttr(locator + ".rotate", 0.0, 0.0, 0.0)
 
     constraint = cmds.orientConstraint(
-        joint, driver, maintainOffset=False
+        joint, locator, maintainOffset=False
     )[0]
 
     nodes.append(constraint)
-    nodes.append(driver)
+    nodes.append(locator)
 
-    return driver
+    return locator
+
+
+def _read_aux_neutral(aux, axes):
+    u"""读辅助关节的 neutral 欧拉值。"""
+
+    return {
+        axis: float(cmds.getAttr(aux + "." + axis))
+        for axis in axes
+    }
+
+
+def _aux_delta(part_key, role, aux, axis, neutral, nodes):
+    u"""辅助关节某轴相对 neutral 的差值。"""
+
+    return _build_channel_delta(
+        part_key, role, aux + "." + axis, neutral[axis], nodes
+    )
 
 
 def _build_spine(joint, side, part, category, neutral_inverse):
@@ -1361,7 +1384,9 @@ def _build_spine(joint, side, part, category, neutral_inverse):
         if part_key in config:
             _remove_part(group, config, part_key)
 
-        driver_joint = _build_spine_driver(joint, part_key, created_nodes)
+        driver_joint = _build_aux_joint(
+            joint, part_key, "driver", created_nodes
+        )
 
         neutral = {
             axis: float(cmds.getAttr(driver_joint + "." + axis))
@@ -1481,20 +1506,7 @@ def _build_swing(joint, side, part, category, neutral_inverse):
 
     spec = swing_parts[part]
     axis_a, axis_b = spec["swing_axes"]
-    controller_name = spec["controller"] + (
-        "_L" if side == "lf" else "_R"
-    )
     part_key = "{}_{}".format(side, part)
-
-    if not cmds.objExists(controller_name):
-        raise RuntimeError(
-            u"缺少控制器，收到：{}".format(controller_name)
-        )
-
-    neutral = {
-        axis: float(cmds.getAttr(controller_name + "." + axis))
-        for axis in (axis_a, axis_b)
-    }
 
     created_nodes = []
     added_attrs = []
@@ -1510,19 +1522,16 @@ def _build_swing(joint, side, part, category, neutral_inverse):
         if part_key in config:
             _remove_part(group, config, part_key)
 
-        delta_a = _build_channel_delta(
-            part_key,
-            "a",
-            controller_name + "." + axis_a,
-            neutral[axis_a],
-            created_nodes,
+        # 辅助关节跟随变形关节，IK / FK 都有效
+        driver_joint = _build_aux_joint(
+            joint, part_key, "driver", created_nodes
         )
-        delta_b = _build_channel_delta(
-            part_key,
-            "b",
-            controller_name + "." + axis_b,
-            neutral[axis_b],
-            created_nodes,
+        neutral = _read_aux_neutral(driver_joint, (axis_a, axis_b))
+        delta_a = _aux_delta(
+            part_key, "a", driver_joint, axis_a, neutral, created_nodes
+        )
+        delta_b = _aux_delta(
+            part_key, "b", driver_joint, axis_b, neutral, created_nodes
         )
 
         separator = "sep_" + part_key
@@ -1563,7 +1572,7 @@ def _build_swing(joint, side, part, category, neutral_inverse):
             "part": part,
             "category": category,
             "mode": "swing",
-            "controller": controller_name,
+            "driver_joint": driver_joint,
             "swing_axes": [axis_a, axis_b],
             "neutral": neutral,
             "separator": separator,
@@ -1626,14 +1635,6 @@ def _build_multi_angle(joint, side, part, category, neutral, neutral_inverse):
     axis = spec["axis"]
     part_key = "{}_{}".format(side, part)
 
-    if neutral is None:
-        neutral = get_neutral_rotate(joint, (axis,))
-
-    neutral = {axis: float(neutral[axis])}
-
-    if neutral_inverse is None:
-        neutral_inverse = get_world_inverse(joint)
-
     created_nodes = []
     added_attrs = []
     group = None
@@ -1648,9 +1649,13 @@ def _build_multi_angle(joint, side, part, category, neutral, neutral_inverse):
         if part_key in config:
             _remove_part(group, config, part_key)
 
-        # 肘/膝用骨骼链向量夹角：IK / FK 都有效，不依赖旋转轴
-        delta, neutral_angle = _build_chain_angle(
-            part_key, part, side, created_nodes
+        # 辅助关节跟随变形关节，IK / FK 都有效，轴也干净
+        driver_joint = _build_aux_joint(
+            joint, part_key, "driver", created_nodes
+        )
+        neutral = _read_aux_neutral(driver_joint, (axis,))
+        delta = _aux_delta(
+            part_key, "x", driver_joint, axis, neutral, created_nodes
         )
 
         separator = "sep_" + part_key
@@ -1717,8 +1722,7 @@ def _build_multi_angle(joint, side, part, category, neutral, neutral_inverse):
             "axis": axis,
             "angles": [int(angle) for angle in spec["angles"]],
             "neutral": neutral,
-            "neutral_inverse": list(neutral_inverse),
-            "neutral_angle": neutral_angle,
+            "driver_joint": driver_joint,
             "separator": separator,
             "attributes": attributes,
             "indicator": indicator,
@@ -1754,8 +1758,7 @@ def _build_multi_angle(joint, side, part, category, neutral, neutral_inverse):
         "category": category,
         "mode": "multi_angle",
         "neutral": dict(neutral),
-        "neutral_inverse": list(neutral_inverse),
-        "neutral_angle": neutral_angle,
+        "driver_joint": driver_joint,
         "separator": separator,
         "attributes": dict(attributes),
         "indicator": indicator,
@@ -1781,35 +1784,7 @@ def _build_four_twist(joint, side, part, category, neutral, neutral_inverse):
     axis_a, axis_b = spec["swing_axes"]
     twist_axis = spec["twist_axis"]
     twist_angle = int(spec["twist_angle"])
-    controller = spec.get("controller")
     part_key = "{}_{}".format(side, part)
-    controller_name = None
-
-    if controller:
-        controller_name = controller + ("_L" if side == "lf" else "_R")
-
-        if not cmds.objExists(controller_name):
-            raise RuntimeError(
-                u"缺少控制器，收到：{}".format(controller_name)
-            )
-
-        neutral = {
-            axis: float(cmds.getAttr(controller_name + "." + axis))
-            for axis in (axis_a, axis_b, twist_axis)
-        }
-    else:
-        if neutral is None:
-            neutral = get_neutral_rotate(
-                joint, (axis_a, axis_b, twist_axis)
-            )
-
-        neutral = {
-            axis: float(neutral[axis])
-            for axis in (axis_a, axis_b, twist_axis)
-        }
-
-    if neutral_inverse is None and not controller_name:
-        neutral_inverse = get_world_inverse(joint)
 
     created_nodes = []
     added_attrs = []
@@ -1825,30 +1800,22 @@ def _build_four_twist(joint, side, part, category, neutral, neutral_inverse):
         if part_key in config:
             _remove_part(group, config, part_key)
 
-        if controller_name:
-            delta_a = _build_channel_delta(
-                part_key, "a", controller_name + "." + axis_a,
-                neutral[axis_a], created_nodes
-            )
-            delta_b = _build_channel_delta(
-                part_key, "b", controller_name + "." + axis_b,
-                neutral[axis_b], created_nodes
-            )
-            delta_t = _build_channel_delta(
-                part_key, "tw", controller_name + "." + twist_axis,
-                neutral[twist_axis], created_nodes
-            )
-        else:
-            delta_a = _build_delta(
-                part_key, "a", joint, axis_a, neutral_inverse, created_nodes
-            )
-            delta_b = _build_delta(
-                part_key, "b", joint, axis_b, neutral_inverse, created_nodes
-            )
-            delta_t = _build_delta(
-                part_key, "tw", joint, twist_axis, neutral_inverse,
-                created_nodes
-            )
+        # 辅助关节跟随变形关节，IK / FK 都有效
+        driver_joint = _build_aux_joint(
+            joint, part_key, "driver", created_nodes
+        )
+        neutral = _read_aux_neutral(
+            driver_joint, (axis_a, axis_b, twist_axis)
+        )
+        delta_a = _aux_delta(
+            part_key, "a", driver_joint, axis_a, neutral, created_nodes
+        )
+        delta_b = _aux_delta(
+            part_key, "b", driver_joint, axis_b, neutral, created_nodes
+        )
+        delta_t = _aux_delta(
+            part_key, "tw", driver_joint, twist_axis, neutral, created_nodes
+        )
 
         separator = "sep_" + part_key
         _add_separator(group, separator)
@@ -1914,12 +1881,11 @@ def _build_four_twist(joint, side, part, category, neutral, neutral_inverse):
             "part": part,
             "category": category,
             "mode": "four_twist",
-            "controller": controller_name,
+            "driver_joint": driver_joint,
             "swing_axes": [axis_a, axis_b],
             "twist_axis": twist_axis,
             "twist_angle": twist_angle,
             "neutral": neutral,
-            "neutral_inverse": list(neutral_inverse or []),
             "separator": separator,
             "attributes": attributes,
             "indicator": indicator,
@@ -1954,8 +1920,8 @@ def _build_four_twist(joint, side, part, category, neutral, neutral_inverse):
         "part": part,
         "category": category,
         "mode": "four_twist",
+        "driver_joint": driver_joint,
         "neutral": dict(neutral),
-        "neutral_inverse": list(neutral_inverse or []),
         "separator": separator,
         "attributes": dict(attributes),
         "indicator": indicator,

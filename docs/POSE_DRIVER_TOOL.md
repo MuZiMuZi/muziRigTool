@@ -182,25 +182,32 @@ grp_md_arm_pose_001
 
 ## 3. 门控原理
 
-### 3.1 驱动源：世界矩阵 + 四元数
+### 3.1 驱动源：辅助定位器 + orientConstraint
 
-ADV 的 FK 控制器通过约束驱动关节，关节自己的 rotate 通道不变，所以不能读局部 rotate。
-工具读关节的 `worldMatrix`，构建时记录 neutral 世界矩阵的逆：
-
-```text
-R = neutral⁻¹ × current worldMatrix
-```
-
-把 R 分解成四元数，绕轴角度用：
+ADV 的 FK 控制器通过约束驱动关节（局部 rotate 不变），IK 又直接驱动关节链。
+工具给每个部位建一个同位置、朝向干净的辅助定位器：
 
 ```text
-angleX = 2 * atan2(qx, qw)
-angleY = 2 * atan2(qy, qw)
-angleZ = 2 * atan2(qz, qw)
+loc_<side>_<part>_driver_001
+- 位置与变形关节一致
+- rotate 清零、无 jointOrient
+- orientConstraint 跟随变形关节
 ```
 
-四元数 q 与 -q 表示同一旋转，先统一到 `w ≥ 0`，否则 -120° 会被算成 +240°。
-这样超过 90°、接近 180° 都不会像欧拉分解那样跳变。
+驱动直接读定位器的 `rotateX/Y/Z`（相对 neutral 的差值）：
+
+```text
+deltaX = 定位器 rotateX − neutral
+```
+
+好处：
+
+- IK / FK / 拉伸都有效（约束跟随真实关节姿态）；
+- 没有 jointOrient 干扰，读出的欧拉轴干净；
+- 不依赖控制器，不会在 IK 下失效。
+
+手指每节的定位器还会挂成父子链（后一节挂到前一节下），
+读到的是「相对上一节」的弯曲，不会叠加父级旋转。
 
 实现上是一段 MEL expression（`expr_<side>_<part>_<role>_001`），
 输入是 decomposeMatrix 的 quat 分量，输出三个轴的角度。
