@@ -62,6 +62,7 @@ hidden_transform_attrs = (
 
 part_category = {
     "shoulder": "arm",
+    "clavicle": "arm",
     "arm": "arm",
     "elbow": "arm",
     "wrist": "arm",
@@ -163,10 +164,26 @@ finger_angle = 90.0
 
 finger_attribute_suffixes = ("1", "2", "3", "12", "23", "123")
 
+# 脊柱：前后左右 + 双向扭转，各 45°，读关节世界矩阵。
+spine_parts = ("spine1", "chest")
+spine_angle = 45.0
+swing_parts = {
+    "clavicle": {
+        "controller": "FKClavicle",
+        "swing_axes": ("rotateY", "rotateZ"),
+        "directions": (
+            ("up", "U", 45, -1),
+            ("down", "D", 45, 1),
+            ("front", "F", 45, 1),
+        ),
+    },
+}
+
 # 本轮支持一键生成的全部部位（手指按整指入口单独处理）。
 supported_parts = (
-    "shoulder", "arm", "hip", "thigh",
+    "shoulder", "arm", "hip", "thigh", "clavicle",
     "elbow", "knee", "wrist", "ankle",
+    "spine1", "chest",
 )
 
 # ADV 标准骨架关节名 → (side, part, category)。
@@ -175,6 +192,8 @@ supported_parts = (
 adv_joint_map = {
     "Shoulder_L": ("lf", "shoulder", "arm"),
     "Shoulder_R": ("rt", "shoulder", "arm"),
+    "Clavicle_L": ("lf", "clavicle", "arm"),
+    "Clavicle_R": ("rt", "clavicle", "arm"),
     "Elbow_L": ("lf", "elbow", "arm"),
     "Elbow_R": ("rt", "elbow", "arm"),
     "Wrist_L": ("lf", "wrist", "arm"),
@@ -557,6 +576,15 @@ def build_network(
         return _build_finger(joint, side, finger)
 
     side, part, category = parse_joint_identity(joint)
+
+    if part in spine_parts:
+        if neutral_inverse is None:
+            neutral_inverse = get_world_inverse(joint)
+
+        return _build_spine(joint, side, part, category, neutral_inverse)
+
+    if part in swing_parts:
+        return _build_swing(joint, side, part, category, neutral_inverse)
 
     if part in multi_angle_parts or part in four_twist_parts:
         return _build_limb_network(
@@ -1134,6 +1162,254 @@ def _build_finger(joint, side, finger):
         "category": "finger",
         "mode": "finger",
         "neutral_angles": neutral_angles,
+        "separator": separator,
+        "attributes": dict(attributes),
+        "indicator": indicator,
+        "nodes": list(created_nodes),
+    }
+
+
+def _build_spine(joint, side, part, category, neutral_inverse):
+    u"""脊柱：前后左右 + 双向扭转，各 45°，读关节世界矩阵。"""
+
+    part_key = "{}_{}".format(side, part)
+
+    if neutral_inverse is None:
+        neutral_inverse = get_world_inverse(joint)
+
+    created_nodes = []
+    added_attrs = []
+    group = None
+
+    cmds.undoInfo(openChunk=True, chunkName="PoseDriverBuild")
+
+    try:
+        ensure_all_groups()
+        group = get_or_create_group(category)
+        config = read_group_config(group)
+
+        if part_key in config:
+            _remove_part(group, config, part_key)
+
+        delta_x = _build_delta(
+            part_key, "x", joint, "rotateX", neutral_inverse, created_nodes
+        )
+        delta_y = _build_delta(
+            part_key, "y", joint, "rotateY", neutral_inverse, created_nodes
+        )
+        delta_z = _build_delta(
+            part_key, "z", joint, "rotateZ", neutral_inverse, created_nodes
+        )
+
+        specs = (
+            ("F45", delta_x, 1),
+            ("B45", delta_x, -1),
+            ("L45", delta_z, 1),
+            ("R45", delta_z, -1),
+            ("TwsP45", delta_y, 1),
+            ("TwsN45", delta_y, -1),
+        )
+
+        separator = "sep_" + part_key
+        _add_separator(group, separator)
+        added_attrs.append(separator)
+
+        attributes = {}
+
+        for suffix, delta, sign in specs:
+            attribute = part_key + "_" + suffix
+            _add_weight_attr(group, attribute)
+            added_attrs.append(attribute)
+            attributes[suffix] = attribute
+
+        indicator = _create_indicator(joint, part_key, created_nodes)
+
+        for suffix, delta, sign in specs:
+            gate = _build_gate(
+                part_key, suffix, delta, sign, spine_angle, created_nodes
+            )
+            _create_driven_key(
+                group + "." + attributes[suffix],
+                gate,
+                part_key,
+                suffix,
+                created_nodes,
+            )
+
+        config[part_key] = {
+            "joint": joint,
+            "side": side,
+            "part": part,
+            "category": category,
+            "mode": "spine",
+            "neutral_inverse": list(neutral_inverse),
+            "separator": separator,
+            "attributes": attributes,
+            "indicator": indicator,
+            "nodes": list(created_nodes),
+        }
+
+        _write_config(group, config)
+
+    except Exception:
+        for attribute in added_attrs:
+            if group and cmds.attributeQuery(attribute, node=group, exists=True):
+                try:
+                    cmds.setAttr(group + "." + attribute, lock=False)
+                except RuntimeError:
+                    pass
+
+                cmds.deleteAttr(group + "." + attribute)
+
+        _delete_nodes(created_nodes)
+        raise
+
+    finally:
+        cmds.undoInfo(closeChunk=True)
+
+    cmds.select(group, replace=True)
+
+    return {
+        "group": group,
+        "part_key": part_key,
+        "joint": joint,
+        "side": side,
+        "part": part,
+        "category": category,
+        "mode": "spine",
+        "neutral_inverse": list(neutral_inverse),
+        "separator": separator,
+        "attributes": dict(attributes),
+        "indicator": indicator,
+        "nodes": list(created_nodes),
+    }
+
+
+def _build_swing(joint, side, part, category, neutral_inverse):
+    u"""锁骨这类只摆动、不扭转的多方向部位。"""
+
+    spec = swing_parts[part]
+    axis_a, axis_b = spec["swing_axes"]
+    controller_name = spec["controller"] + (
+        "_L" if side == "lf" else "_R"
+    )
+    part_key = "{}_{}".format(side, part)
+
+    if not cmds.objExists(controller_name):
+        raise RuntimeError(
+            u"缺少控制器，收到：{}".format(controller_name)
+        )
+
+    neutral = {
+        axis: float(cmds.getAttr(controller_name + "." + axis))
+        for axis in (axis_a, axis_b)
+    }
+
+    created_nodes = []
+    added_attrs = []
+    group = None
+
+    cmds.undoInfo(openChunk=True, chunkName="PoseDriverBuild")
+
+    try:
+        ensure_all_groups()
+        group = get_or_create_group(category)
+        config = read_group_config(group)
+
+        if part_key in config:
+            _remove_part(group, config, part_key)
+
+        delta_a = _build_channel_delta(
+            part_key,
+            "a",
+            controller_name + "." + axis_a,
+            neutral[axis_a],
+            created_nodes,
+        )
+        delta_b = _build_channel_delta(
+            part_key,
+            "b",
+            controller_name + "." + axis_b,
+            neutral[axis_b],
+            created_nodes,
+        )
+
+        separator = "sep_" + part_key
+        _add_separator(group, separator)
+        added_attrs.append(separator)
+
+        attributes = {}
+        gate_specs = []
+
+        for name, letter, angle, sign in spec["directions"]:
+            suffix = letter + str(int(angle))
+            attribute = part_key + "_" + suffix
+
+            _add_weight_attr(group, attribute)
+            added_attrs.append(attribute)
+            attributes[suffix] = attribute
+
+            delta = delta_a if name in ("up", "down") else delta_b
+            gate_specs.append((name, suffix, angle, sign, delta))
+
+        indicator = _create_indicator(joint, part_key, created_nodes)
+
+        for name, suffix, angle, sign, delta in gate_specs:
+            gate = _build_gate(
+                part_key, name, delta, sign, angle, created_nodes
+            )
+            _create_driven_key(
+                group + "." + attributes[suffix],
+                gate,
+                part_key,
+                suffix,
+                created_nodes,
+            )
+
+        config[part_key] = {
+            "joint": joint,
+            "side": side,
+            "part": part,
+            "category": category,
+            "mode": "swing",
+            "controller": controller_name,
+            "swing_axes": [axis_a, axis_b],
+            "neutral": neutral,
+            "separator": separator,
+            "attributes": attributes,
+            "indicator": indicator,
+            "nodes": list(created_nodes),
+        }
+
+        _write_config(group, config)
+
+    except Exception:
+        for attribute in added_attrs:
+            if group and cmds.attributeQuery(attribute, node=group, exists=True):
+                try:
+                    cmds.setAttr(group + "." + attribute, lock=False)
+                except RuntimeError:
+                    pass
+
+                cmds.deleteAttr(group + "." + attribute)
+
+        _delete_nodes(created_nodes)
+        raise
+
+    finally:
+        cmds.undoInfo(closeChunk=True)
+
+    cmds.select(group, replace=True)
+
+    return {
+        "group": group,
+        "part_key": part_key,
+        "joint": joint,
+        "side": side,
+        "part": part,
+        "category": category,
+        "mode": "swing",
+        "neutral": dict(neutral),
         "separator": separator,
         "attributes": dict(attributes),
         "indicator": indicator,
