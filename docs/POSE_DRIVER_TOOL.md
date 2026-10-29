@@ -19,7 +19,7 @@ launch.launch()
 
 1. 按 ADV 固定关节名扫描场景；
 2. 找到 `Shoulder_L/R`、`Hip_L/R` 后，在对应汇总组上建分隔属性 + 8 个方向属性；
-3. 每个方向属性由一条 driven key 曲线驱动，曲线默认 flat 平滑切线，可以在 Graph Editor 里自己调；
+3. 每个方向属性由一条 driven key 曲线驱动，曲线默认三点 auto 切线（0→0、0.5→0.25、1→1，前段平缓后段上升），可以在 Graph Editor 里自己调；
 4. 关节旁建一个 `ind_<side>_<part>_001` 指示器，随关节转动显示当前方向；
 5. 关节一转，属性值实时变化。
 
@@ -272,13 +272,13 @@ frontUp   = front · up
 
 ```text
 方向门输出（driver，0 → 1）
-      ↓ driven key 曲线（默认 flat 平滑，可手动调）
+      ↓ driven key 曲线（默认三点 auto，可手动调）
 组属性（driven，0 → 1）
 ```
 
 - 曲线节点按 `<part_key>_<direction>Curve` 命名，例如 `lf_shoulder_upCurve`；
 - 两个端点：driver 0 → 值 0，driver 1 → 值 1；
-- 默认 flat 切线（两端平缓、中段陡的 S 形），绑定师可以在 Graph Editor 里改成 ease / 自定义曲线；
+- 默认三点 auto 切线（0→0、0.5→0.25、1→1，前段平缓后段上升），绑定师可以在 Graph Editor 里改成 ease / 自定义曲线；
 - 曲线替换了原来的直接连接，所以数值默认一致，但过渡手感可调。
 
 ### 4.2 姿态方向指示器
