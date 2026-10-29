@@ -79,6 +79,9 @@ def build_scene():
     cmds.createNode("transform", name="FKIndexFinger3_R")
 
     cmds.select(clear=True)
+    cmds.createNode("transform", name="FKWrist_R")
+
+    cmds.select(clear=True)
     hip_l = cmds.joint(name="Hip_L", position=(-4, 0, 0))
 
     cmds.select(clear=True)
@@ -346,36 +349,45 @@ def check_limb(joints):
 
     wrist = pose_driver_utils.build_network(joints["wrist"])
     wgroup = wrist["group"]
+    wrist_ctrl = "FKWrist_R"
 
-    cmds.setAttr(joints["wrist"] + ".rotateZ", -90.0)
+    cmds.setAttr(wrist_ctrl + ".rotateZ", -90.0)
     assert abs(cmds.getAttr(wgroup + ".rt_wrist_U90") - 1.0) < 1e-5, (
         u"腕 U90 不对"
     )
-    cmds.setAttr(joints["wrist"] + ".rotateZ", 0.0)
+    cmds.setAttr(wrist_ctrl + ".rotateZ", 0.0)
 
-    cmds.setAttr(joints["wrist"] + ".rotateY", 70.0)
+    cmds.setAttr(wrist_ctrl + ".rotateY", 70.0)
     assert abs(cmds.getAttr(wgroup + ".rt_wrist_L70") - 1.0) < 1e-5, (
         u"腕 L70 不对"
     )
-    cmds.setAttr(joints["wrist"] + ".rotateY", -70.0)
+    cmds.setAttr(wrist_ctrl + ".rotateY", -70.0)
     assert abs(cmds.getAttr(wgroup + ".rt_wrist_R70") - 1.0) < 1e-5, (
         u"腕 R70 不对"
     )
-    cmds.setAttr(joints["wrist"] + ".rotateY", 0.0)
+    cmds.setAttr(wrist_ctrl + ".rotateY", 0.0)
 
-    cmds.setAttr(joints["wrist"] + ".rotateX", 179.0)
+    cmds.setAttr(wrist_ctrl + ".rotateX", 179.0)
     assert abs(cmds.getAttr(wgroup + ".rt_wrist_TwsP179") - 1.0) < 1e-5, (
         u"腕正向扭转不对"
     )
 
-    cmds.setAttr(joints["wrist"] + ".rotateX", -179.0)
+    for attribute in (
+            "rt_wrist_U90", "rt_wrist_D90",
+            "rt_wrist_L70", "rt_wrist_R70",
+    ):
+        assert abs(cmds.getAttr(wgroup + "." + attribute)) < 1e-5, (
+            u"扭转时 {} 不应被驱动".format(attribute)
+        )
+
+    cmds.setAttr(wrist_ctrl + ".rotateX", -179.0)
     assert abs(cmds.getAttr(wgroup + ".rt_wrist_TwsN179") - 1.0) < 1e-5, (
         u"腕负向扭转不对"
     )
     assert abs(cmds.getAttr(wgroup + ".rt_wrist_TwsP179")) < 1e-5, (
-        u"负向扭转时正向应为 0"
+        u"负向时正向扭转应为 0"
     )
-    cmds.setAttr(joints["wrist"] + ".rotateX", 0.0)
+    cmds.setAttr(wrist_ctrl + ".rotateX", 0.0)
 
     ankle = pose_driver_utils.build_network(joints["ankle"])
     agroup = ankle["group"]

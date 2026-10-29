@@ -119,6 +119,8 @@ chain_parts = {
 # directions: (方向名, 属性字母, 角度, 符号)
 four_twist_parts = {
     "wrist": {
+        # 手腕在 IK 下仍由手腕控制器驱动，直接读控制器通道
+        "controller": "FKWrist",
         # 实测：上下（屈伸）走 rotateZ，左右（尺桡偏）走 rotateY
         "swing_axes": ("rotateZ", "rotateY"),
         "directions": (
@@ -689,6 +691,11 @@ def build_network(
     except Exception:
         for attribute in added_attrs:
             if group and cmds.attributeQuery(attribute, node=group, exists=True):
+                try:
+                    cmds.setAttr(group + "." + attribute, lock=False)
+                except RuntimeError:
+                    pass
+
                 cmds.deleteAttr(group + "." + attribute)
 
         _delete_nodes(created_nodes)
@@ -879,6 +886,21 @@ def _build_multiply(part_key, role, first, second, nodes):
     cmds.connectAttr(second, node + ".input2")
 
     return node + ".output"
+
+
+def _build_channel_delta(part_key, role, plug, neutral_value, nodes):
+    u"""建通道差值：当前通道值 − neutral。"""
+
+    delta = _create(
+        "plus_" + part_key + "_" + role + "Delta_001",
+        "plusMinusAverage",
+        nodes,
+    )
+    cmds.setAttr(delta + ".operation", 2)
+    cmds.connectAttr(plug, delta + ".input1D[0]")
+    cmds.setAttr(delta + ".input1D[1]", float(neutral_value))
+
+    return delta + ".output1D"
 
 
 def _build_three_joint_angle(part_key, role, joint_a, joint_b, joint_c, nodes):
@@ -1083,6 +1105,11 @@ def _build_finger(joint, side, finger):
     except Exception:
         for attribute in added_attrs:
             if group and cmds.attributeQuery(attribute, node=group, exists=True):
+                try:
+                    cmds.setAttr(group + "." + attribute, lock=False)
+                except RuntimeError:
+                    pass
+
                 cmds.deleteAttr(group + "." + attribute)
 
         _delete_nodes(created_nodes)
@@ -1231,6 +1258,11 @@ def _build_multi_angle(joint, side, part, category, neutral, neutral_inverse):
     except Exception:
         for attribute in added_attrs:
             if group and cmds.attributeQuery(attribute, node=group, exists=True):
+                try:
+                    cmds.setAttr(group + "." + attribute, lock=False)
+                except RuntimeError:
+                    pass
+
                 cmds.deleteAttr(group + "." + attribute)
 
         _delete_nodes(created_nodes)
@@ -1277,19 +1309,34 @@ def _build_four_twist(joint, side, part, category, neutral, neutral_inverse):
     axis_a, axis_b = spec["swing_axes"]
     twist_axis = spec["twist_axis"]
     twist_angle = int(spec["twist_angle"])
+    controller = spec.get("controller")
     part_key = "{}_{}".format(side, part)
+    controller_name = None
 
-    if neutral is None:
-        neutral = get_neutral_rotate(
-            joint, (axis_a, axis_b, twist_axis)
-        )
+    if controller:
+        controller_name = controller + ("_L" if side == "lf" else "_R")
 
-    neutral = {
-        axis: float(neutral[axis])
-        for axis in (axis_a, axis_b, twist_axis)
-    }
+        if not cmds.objExists(controller_name):
+            raise RuntimeError(
+                u"缺少控制器，收到：{}".format(controller_name)
+            )
 
-    if neutral_inverse is None:
+        neutral = {
+            axis: float(cmds.getAttr(controller_name + "." + axis))
+            for axis in (axis_a, axis_b, twist_axis)
+        }
+    else:
+        if neutral is None:
+            neutral = get_neutral_rotate(
+                joint, (axis_a, axis_b, twist_axis)
+            )
+
+        neutral = {
+            axis: float(neutral[axis])
+            for axis in (axis_a, axis_b, twist_axis)
+        }
+
+    if neutral_inverse is None and not controller_name:
         neutral_inverse = get_world_inverse(joint)
 
     created_nodes = []
@@ -1306,16 +1353,30 @@ def _build_four_twist(joint, side, part, category, neutral, neutral_inverse):
         if part_key in config:
             _remove_part(group, config, part_key)
 
-        delta_a = _build_delta(
-            part_key, "a", joint, axis_a, neutral_inverse, created_nodes
-        )
-        delta_b = _build_delta(
-            part_key, "b", joint, axis_b, neutral_inverse, created_nodes
-        )
-        delta_t = _build_delta(
-            part_key, "tw", joint, twist_axis, neutral_inverse,
-            created_nodes
-        )
+        if controller_name:
+            delta_a = _build_channel_delta(
+                part_key, "a", controller_name + "." + axis_a,
+                neutral[axis_a], created_nodes
+            )
+            delta_b = _build_channel_delta(
+                part_key, "b", controller_name + "." + axis_b,
+                neutral[axis_b], created_nodes
+            )
+            delta_t = _build_channel_delta(
+                part_key, "tw", controller_name + "." + twist_axis,
+                neutral[twist_axis], created_nodes
+            )
+        else:
+            delta_a = _build_delta(
+                part_key, "a", joint, axis_a, neutral_inverse, created_nodes
+            )
+            delta_b = _build_delta(
+                part_key, "b", joint, axis_b, neutral_inverse, created_nodes
+            )
+            delta_t = _build_delta(
+                part_key, "tw", joint, twist_axis, neutral_inverse,
+                created_nodes
+            )
 
         separator = "sep_" + part_key
         _add_separator(group, separator)
@@ -1381,11 +1442,12 @@ def _build_four_twist(joint, side, part, category, neutral, neutral_inverse):
             "part": part,
             "category": category,
             "mode": "four_twist",
+            "controller": controller_name,
             "swing_axes": [axis_a, axis_b],
             "twist_axis": twist_axis,
             "twist_angle": twist_angle,
             "neutral": neutral,
-            "neutral_inverse": list(neutral_inverse),
+            "neutral_inverse": list(neutral_inverse or []),
             "separator": separator,
             "attributes": attributes,
             "indicator": indicator,
@@ -1397,6 +1459,11 @@ def _build_four_twist(joint, side, part, category, neutral, neutral_inverse):
     except Exception:
         for attribute in added_attrs:
             if group and cmds.attributeQuery(attribute, node=group, exists=True):
+                try:
+                    cmds.setAttr(group + "." + attribute, lock=False)
+                except RuntimeError:
+                    pass
+
                 cmds.deleteAttr(group + "." + attribute)
 
         _delete_nodes(created_nodes)
@@ -1416,7 +1483,7 @@ def _build_four_twist(joint, side, part, category, neutral, neutral_inverse):
         "category": category,
         "mode": "four_twist",
         "neutral": dict(neutral),
-        "neutral_inverse": list(neutral_inverse),
+        "neutral_inverse": list(neutral_inverse or []),
         "separator": separator,
         "attributes": dict(attributes),
         "indicator": indicator,
