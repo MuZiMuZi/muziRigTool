@@ -96,7 +96,7 @@ pose_driver_utils.delete_all_parts()
 | 四方向 + 扭转 | wrist / ankle | 腕：`lf_wrist_U90` / `_D90` / `_L70` / `_R70` / `_TwsP179` / `_TwsN179`；踝：`lf_ankle_F70` / `_U70` / `_B70` / `_D70` / 扭转 | Y/Z 摆动门，rotateX 双向扭转门，独立叠加 |
 
 - 肘弯曲轴 `rotateZ`、膝 `rotateX`，都是正向；转到 45° 时 F45 满，转到 90° 时 F90 满（F45 仍在），120° 时 F120 满；
-- 腕直接读 `FKWrist_L/R` 控制器通道（IK 下手腕仍由手腕控制器驱动）；上下（屈伸）`rotateZ` 90°、左右（尺桡偏）`rotateY` 70°、扭转 `rotateX` 179°；
+- 腕直接读 `FKWrist_L/R` 控制器通道（IK 下手腕仍由手腕控制器驱动）；上下（屈伸）`rotateY` 90°、左右（尺桡偏）`rotateZ` 70°、扭转 `rotateX` 179°；
 - 腕的扭转只驱动 `TwsP179` / `TwsN179`，不会串到上下左右；
 - 踝的轴分配：前后/上下用 `rotateY` + `rotateZ`，各 70°，扭转 `rotateX` 179°；
 - 扭转正向 `TwsP179`、负向 `TwsN179`；

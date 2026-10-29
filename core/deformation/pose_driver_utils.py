@@ -121,8 +121,8 @@ four_twist_parts = {
     "wrist": {
         # 手腕在 IK 下仍由手腕控制器驱动，直接读控制器通道
         "controller": "FKWrist",
-        # 实测：上下（屈伸）走 rotateZ，左右（尺桡偏）走 rotateY
-        "swing_axes": ("rotateZ", "rotateY"),
+        # 实测：上下（屈伸）走 rotateY，左右（尺桡偏）走 rotateZ
+        "swing_axes": ("rotateY", "rotateZ"),
         "directions": (
             ("up", "U", 90, -1),
             ("down", "D", 90, 1),

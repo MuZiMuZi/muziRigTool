@@ -351,21 +351,21 @@ def check_limb(joints):
     wgroup = wrist["group"]
     wrist_ctrl = "FKWrist_R"
 
-    cmds.setAttr(wrist_ctrl + ".rotateZ", -90.0)
+    cmds.setAttr(wrist_ctrl + ".rotateY", -90.0)
     assert abs(cmds.getAttr(wgroup + ".rt_wrist_U90") - 1.0) < 1e-5, (
         u"腕 U90 不对"
     )
-    cmds.setAttr(wrist_ctrl + ".rotateZ", 0.0)
+    cmds.setAttr(wrist_ctrl + ".rotateY", 0.0)
 
-    cmds.setAttr(wrist_ctrl + ".rotateY", 70.0)
+    cmds.setAttr(wrist_ctrl + ".rotateZ", 70.0)
     assert abs(cmds.getAttr(wgroup + ".rt_wrist_L70") - 1.0) < 1e-5, (
         u"腕 L70 不对"
     )
-    cmds.setAttr(wrist_ctrl + ".rotateY", -70.0)
+    cmds.setAttr(wrist_ctrl + ".rotateZ", -70.0)
     assert abs(cmds.getAttr(wgroup + ".rt_wrist_R70") - 1.0) < 1e-5, (
         u"腕 R70 不对"
     )
-    cmds.setAttr(wrist_ctrl + ".rotateY", 0.0)
+    cmds.setAttr(wrist_ctrl + ".rotateZ", 0.0)
 
     cmds.setAttr(wrist_ctrl + ".rotateX", 179.0)
     assert abs(cmds.getAttr(wgroup + ".rt_wrist_TwsP179") - 1.0) < 1e-5, (
