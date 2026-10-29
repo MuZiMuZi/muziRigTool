@@ -342,8 +342,11 @@ def check_limb(joints):
     assert abs(cmds.getAttr(group + ".rt_elbow_F120") - 1.0) < 1e-5, (
         u"肘 F120 不对"
     )
-    assert abs(cmds.getAttr(group + ".rt_elbow_F90")) < 1e-5, (
-        u"120° 时 F90 应已交棒"
+    assert abs(cmds.getAttr(group + ".rt_elbow_F90") - 1.0) < 1e-5, (
+        u"120° 时 F90 应继续保留"
+    )
+    assert abs(cmds.getAttr(group + ".rt_elbow_F45")) < 1e-5, (
+        u"120° 时 F45 应已交棒"
     )
     cmds.setAttr(joints["elbow"] + ".rotateZ", 0.0)
 

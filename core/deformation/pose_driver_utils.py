@@ -1216,13 +1216,13 @@ def _build_multi_angle(joint, side, part, category, neutral, neutral_inverse):
         for index, angle in enumerate(angles):
             suffix = "F" + str(angle)
 
-            if index < len(angles) - 1:
-                # 当前段门 − 下一段门：过目标后交棒，45° 时只有 F45 为 1
+            if index == 0 and len(angles) > 1:
+                # 第一段过目标后交棒；后续段达到后保持
                 value = _build_subtract(
                     part_key,
                     suffix,
-                    gates[index],
-                    gates[index + 1],
+                    gates[0],
+                    gates[1],
                     created_nodes,
                 )
             else:
