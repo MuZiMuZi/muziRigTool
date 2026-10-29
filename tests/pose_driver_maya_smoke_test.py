@@ -225,6 +225,14 @@ def check_attributes(result):
 
     assert key_values == [0.0, 1.0], u"曲线端点不对：{}".format(key_values)
 
+    tangents = cmds.keyTangent(
+        curves[0], query=True, inTangentType=True
+    ) or []
+
+    assert tangents and tangents[0] == "flat", (
+        u"曲线默认切线不是 flat：{}".format(tangents)
+    )
+
     indicator = result["indicator"]
 
     assert cmds.objExists(indicator), u"缺少姿态指示器：{}".format(indicator)

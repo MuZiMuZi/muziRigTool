@@ -2139,8 +2139,9 @@ def _create_driven_key(driven_plug, driver_plug, part_key, direction, nodes):
     ) or []
 
     for curve in curves:
+        # 默认用 flat 切线：两端平缓、中段陡，呈平滑 S 形
         cmds.keyTangent(
-            curve, inTangentType="linear", outTangentType="linear"
+            curve, inTangentType="flat", outTangentType="flat"
         )
 
         renamed = cmds.rename(
