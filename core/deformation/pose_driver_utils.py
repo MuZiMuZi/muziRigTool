@@ -968,6 +968,9 @@ def _build_finger(joint, side, finger):
     suffix = "_L" if side == "lf" else "_R"
     wrist = "Wrist" + suffix
     names = [base + str(segment) + suffix for segment in range(1, 5)]
+    controllers = [
+        "FK" + base + str(segment) + suffix for segment in range(1, 4)
+    ]
     part_key = "{}_{}".format(side, finger)
 
     if not cmds.objExists(wrist):
@@ -976,6 +979,12 @@ def _build_finger(joint, side, finger):
     for name in names:
         if not cmds.objExists(name):
             raise RuntimeError(u"缺少手指关节，收到：{}".format(name))
+
+    for name in controllers:
+        if not cmds.objExists(name):
+            raise RuntimeError(
+                u"缺少手指控制器，收到：{}".format(name)
+            )
 
     created_nodes = []
     added_attrs = []
@@ -994,25 +1003,18 @@ def _build_finger(joint, side, finger):
         neutral_angles = []
         gates = []
 
-        for index in range(3):
-            start = wrist if index == 0 else names[index - 1]
+        # 手指是纯 FK，直接读控制器 rotateY，比骨骼链夹角更直观准确
+        for index, controller in enumerate(controllers):
+            plug = controller + ".rotateY"
+            neutral_value = float(cmds.getAttr(plug))
+            neutral_angles.append(neutral_value)
 
-            delta, neutral_angle = _build_three_joint_angle(
-                part_key,
-                "s" + str(index + 1),
-                start,
-                names[index],
-                names[index + 1],
-                created_nodes,
-            )
-
-            neutral_angles.append(neutral_angle)
             gates.append(
                 _build_gate_between(
                     part_key,
                     "g" + str(index + 1),
-                    delta,
-                    0.0,
+                    plug,
+                    neutral_value,
                     finger_angle,
                     created_nodes,
                 )
@@ -1067,6 +1069,7 @@ def _build_finger(joint, side, finger):
             "part": finger,
             "category": "finger",
             "mode": "finger",
+            "controllers": controllers,
             "segments": [1, 2, 3],
             "neutral_angles": neutral_angles,
             "separator": separator,

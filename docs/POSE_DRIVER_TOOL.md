@@ -81,7 +81,8 @@ pose_driver_utils.delete_all_parts()
 | `lf_index23_F90` | 2+3 两节融合 |
 | `lf_index123_F90` | 1+2+3 三节融合 |
 
-- 每节弯曲角用骨骼链夹角：`angle(Wrist→Finger1, Finger1→Finger2)`、`angle(Finger1→Finger2, Finger2→Finger3)`、`angle(Finger2→Finger3, Finger3→Finger4)`；
+- 每节驱动直接读控制器 `FK<Finger>Finger<节>_L/R` 的 `rotateY`（手指是纯 FK，没有 IK 顾虑，比骨骼链夹角更直观）；
+- 构建时记录控制器 neutral 值，转到 90° 时门满；
 - 融合属性 = 对应各节门的乘积，所以各节都到 90° 时融合才到 1；
 - 单节修型与融合独立叠加；
 - 拇指按同一套做，第一节也参与融合；

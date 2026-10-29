@@ -74,6 +74,11 @@ def build_scene():
     cmds.parent(index4_r, index3_r, absolute=True)
 
     cmds.select(clear=True)
+    cmds.createNode("transform", name="FKIndexFinger1_R")
+    cmds.createNode("transform", name="FKIndexFinger2_R")
+    cmds.createNode("transform", name="FKIndexFinger3_R")
+
+    cmds.select(clear=True)
     hip_l = cmds.joint(name="Hip_L", position=(-4, 0, 0))
 
     cmds.select(clear=True)
@@ -480,10 +485,10 @@ def check_finger(joints):
             u"缺少手指属性：{}".format(key)
         )
 
-    finger1 = "IndexFinger1_R"
-    finger2 = "IndexFinger2_R"
+    finger1 = "FKIndexFinger1_R"
+    finger2 = "FKIndexFinger2_R"
 
-    cmds.setAttr(finger1 + ".rotateZ", 90.0)
+    cmds.setAttr(finger1 + ".rotateY", 90.0)
     assert abs(cmds.getAttr(group + ".rt_index1_F90") - 1.0) < 1e-5, (
         u"第一节 90° 时 rt_index1_F90 不是 1"
     )
@@ -491,7 +496,7 @@ def check_finger(joints):
         u"第二节没弯时融合 12 应为 0"
     )
 
-    cmds.setAttr(finger2 + ".rotateZ", 90.0)
+    cmds.setAttr(finger2 + ".rotateY", 90.0)
     assert abs(cmds.getAttr(group + ".rt_index2_F90") - 1.0) < 1e-5, (
         u"第二节 90° 时 rt_index2_F90 不是 1"
     )
@@ -499,8 +504,8 @@ def check_finger(joints):
         u"两节都 90° 时融合 12 应为 1"
     )
 
-    cmds.setAttr(finger1 + ".rotateZ", 0.0)
-    cmds.setAttr(finger2 + ".rotateZ", 0.0)
+    cmds.setAttr(finger1 + ".rotateY", 0.0)
+    cmds.setAttr(finger2 + ".rotateY", 0.0)
 
     print(u"[ok] 手指：单节 + 两节融合")
 
