@@ -21,6 +21,7 @@ u"""姿态驱动修型的 Maya 层。
 
 import json
 import math
+import re
 
 from maya import cmds
 from maya.api import OpenMaya as om
@@ -142,7 +143,20 @@ four_twist_parts = {
     },
 }
 
-# 本轮支持一键生成的全部部位。
+# 手指：ADV 命名 <Finger>Finger<节>_L/_R，节 1~4；修型只做 1/2/3 节。
+finger_defs = {
+    "thumb": "ThumbFinger",
+    "index": "IndexFinger",
+    "middle": "MiddleFinger",
+    "ring": "RingFinger",
+    "pinky": "PinkyFinger",
+}
+
+finger_angle = 90.0
+
+finger_attribute_suffixes = ("1", "2", "3", "12", "23", "123")
+
+# 本轮支持一键生成的全部部位（手指按整指入口单独处理）。
 supported_parts = (
     "shoulder", "arm", "hip", "thigh",
     "elbow", "knee", "wrist", "ankle",
@@ -300,6 +314,31 @@ def parse_joint_identity(joint):
             joint
         )
     )
+
+
+def parse_finger_joint(joint):
+    u"""解析 ADV 手指关节名，例如 IndexFinger1_L。
+
+    Args:
+        joint (str): 关节名。
+
+    Returns:
+        tuple | None: (side, finger, segment)；不是手指关节时返回 None。
+    """
+
+    short_name = joint.split("|")[-1].split(":")[-1]
+
+    match = re.match(
+        r"(Thumb|Index|Middle|Ring|Pinky)Finger([1-4])_([LR])$",
+        short_name,
+    )
+
+    if not match:
+        return None
+
+    side = "lf" if match.group(3) == "L" else "rt"
+
+    return side, match.group(1).lower(), int(match.group(2))
 
 
 def get_rotate_value(joint, axis):
@@ -497,6 +536,18 @@ def build_network(
     """
 
     validate_joint(joint)
+
+    finger_info = parse_finger_joint(joint)
+
+    if finger_info:
+        side, finger, segment = finger_info
+
+        if segment != 1:
+            raise RuntimeError(
+                u"手指请用 Finger1 关节生成整指，收到：{}".format(joint)
+            )
+
+        return _build_finger(joint, side, finger)
 
     side, part, category = parse_joint_identity(joint)
 
@@ -814,6 +865,245 @@ def _build_subtract(part_key, role, first, second, nodes):
     cmds.connectAttr(second, node + ".input1D[1]")
 
     return node + ".output1D"
+
+
+def _build_multiply(part_key, role, first, second, nodes):
+    u"""建 first × second。"""
+
+    node = _create(
+        "mult_" + part_key + "_" + role + "_001",
+        "multDoubleLinear",
+        nodes,
+    )
+    cmds.connectAttr(first, node + ".input1")
+    cmds.connectAttr(second, node + ".input2")
+
+    return node + ".output"
+
+
+def _build_three_joint_angle(part_key, role, joint_a, joint_b, joint_c, nodes):
+    u"""建 angle(A→B, B→C)，返回 (delta plug, neutral angle)。"""
+
+    for name in (joint_a, joint_b, joint_c):
+        if not cmds.objExists(name):
+            raise RuntimeError(u"骨骼链缺少关节，收到：{}".format(name))
+
+    positions = {}
+
+    for tag, name in (("a", joint_a), ("b", joint_b), ("c", joint_c)):
+        decompose = _create(
+            "decompose_" + part_key + "_" + role + tag + "_001",
+            "decomposeMatrix",
+            nodes,
+        )
+        cmds.connectAttr(name + ".worldMatrix[0]", decompose + ".inputMatrix")
+        positions[tag] = decompose + ".outputTranslate"
+
+    def make_vector(tag, end_position, start_position):
+        vector = _create(
+            "plus_" + part_key + "_" + role + tag + "Vec_001",
+            "plusMinusAverage",
+            nodes,
+        )
+        cmds.setAttr(vector + ".operation", 2)
+
+        for component in ("x", "y", "z"):
+            cmds.connectAttr(
+                end_position + component.upper(),
+                vector + ".input3D[0].input3D" + component,
+            )
+            cmds.connectAttr(
+                start_position + component.upper(),
+                vector + ".input3D[1].input3D" + component,
+            )
+
+        return vector
+
+    vector_ab = make_vector("ab", positions["b"], positions["a"])
+    vector_bc = make_vector("bc", positions["c"], positions["b"])
+
+    angle = _create(
+        "angleBetween_" + part_key + "_" + role + "_001",
+        "angleBetween",
+        nodes,
+    )
+
+    for component in ("X", "Y", "Z"):
+        cmds.connectAttr(
+            vector_ab + ".output3D" + component.lower(),
+            angle + ".vector1" + component,
+        )
+        cmds.connectAttr(
+            vector_bc + ".output3D" + component.lower(),
+            angle + ".vector2" + component,
+        )
+
+    neutral_angle = float(cmds.getAttr(angle + ".angle"))
+
+    delta = _create(
+        "plus_" + part_key + "_" + role + "Delta_001",
+        "plusMinusAverage",
+        nodes,
+    )
+    cmds.setAttr(delta + ".operation", 2)
+    cmds.connectAttr(angle + ".angle", delta + ".input1D[0]")
+    cmds.setAttr(delta + ".input1D[1]", neutral_angle)
+
+    return delta + ".output1D", neutral_angle
+
+
+def _build_finger(joint, side, finger):
+    u"""构建一整根手指：1/2/3 节单独修型 + 两节/三节融合。
+
+    Args:
+        joint (str): 该手指的 Finger1 关节。
+        side (str): lf / rt。
+        finger (str): thumb / index / middle / ring / pinky。
+
+    Returns:
+        dict: 部位信息。
+    """
+
+    base = finger_defs[finger]
+    suffix = "_L" if side == "lf" else "_R"
+    wrist = "Wrist" + suffix
+    names = [base + str(segment) + suffix for segment in range(1, 5)]
+    part_key = "{}_{}".format(side, finger)
+
+    if not cmds.objExists(wrist):
+        raise RuntimeError(u"缺少手腕关节，收到：{}".format(wrist))
+
+    for name in names:
+        if not cmds.objExists(name):
+            raise RuntimeError(u"缺少手指关节，收到：{}".format(name))
+
+    created_nodes = []
+    added_attrs = []
+    group = None
+
+    cmds.undoInfo(openChunk=True, chunkName="PoseDriverBuild")
+
+    try:
+        ensure_all_groups()
+        group = get_or_create_group("finger")
+        config = read_group_config(group)
+
+        if part_key in config:
+            _remove_part(group, config, part_key)
+
+        neutral_angles = []
+        gates = []
+
+        for index in range(3):
+            start = wrist if index == 0 else names[index - 1]
+
+            delta, neutral_angle = _build_three_joint_angle(
+                part_key,
+                "s" + str(index + 1),
+                start,
+                names[index],
+                names[index + 1],
+                created_nodes,
+            )
+
+            neutral_angles.append(neutral_angle)
+            gates.append(
+                _build_gate_between(
+                    part_key,
+                    "g" + str(index + 1),
+                    delta,
+                    0.0,
+                    finger_angle,
+                    created_nodes,
+                )
+            )
+
+        gate_12 = _build_multiply(
+            part_key, "m12", gates[0], gates[1], created_nodes
+        )
+        gate_23 = _build_multiply(
+            part_key, "m23", gates[1], gates[2], created_nodes
+        )
+        gate_123 = _build_multiply(
+            part_key, "m123", gate_12, gates[2], created_nodes
+        )
+
+        values = {
+            "1": gates[0],
+            "2": gates[1],
+            "3": gates[2],
+            "12": gate_12,
+            "23": gate_23,
+            "123": gate_123,
+        }
+
+        separator = "sep_" + part_key
+        _add_separator(group, separator)
+        added_attrs.append(separator)
+
+        attributes = {}
+
+        for key in finger_attribute_suffixes:
+            attribute = part_key + key + "_F90"
+            _add_weight_attr(group, attribute)
+            added_attrs.append(attribute)
+            attributes[key] = attribute
+
+        indicator = _create_indicator(names[0], part_key, created_nodes)
+
+        for key in finger_attribute_suffixes:
+            _create_driven_key(
+                group + "." + attributes[key],
+                values[key],
+                part_key,
+                key + "F90",
+                created_nodes,
+            )
+
+        config[part_key] = {
+            "joint": joint,
+            "side": side,
+            "finger": finger,
+            "part": finger,
+            "category": "finger",
+            "mode": "finger",
+            "segments": [1, 2, 3],
+            "neutral_angles": neutral_angles,
+            "separator": separator,
+            "attributes": attributes,
+            "indicator": indicator,
+            "nodes": list(created_nodes),
+        }
+
+        _write_config(group, config)
+
+    except Exception:
+        for attribute in added_attrs:
+            if group and cmds.attributeQuery(attribute, node=group, exists=True):
+                cmds.deleteAttr(group + "." + attribute)
+
+        _delete_nodes(created_nodes)
+        raise
+
+    finally:
+        cmds.undoInfo(closeChunk=True)
+
+    cmds.select(group, replace=True)
+
+    return {
+        "group": group,
+        "part_key": part_key,
+        "joint": joint,
+        "side": side,
+        "part": finger,
+        "category": "finger",
+        "mode": "finger",
+        "neutral_angles": neutral_angles,
+        "separator": separator,
+        "attributes": dict(attributes),
+        "indicator": indicator,
+        "nodes": list(created_nodes),
+    }
 
 
 def _build_multi_angle(joint, side, part, category, neutral, neutral_inverse):
@@ -1319,6 +1609,21 @@ def find_supported_joints():
             "part": part,
             "category": category,
         })
+
+    for finger, base in finger_defs.items():
+        for suffix, side in (("_L", "lf"), ("_R", "rt")):
+            name = base + "1" + suffix
+
+            if not cmds.objExists(name):
+                continue
+
+            found.append({
+                "joint": name,
+                "short": name,
+                "side": side,
+                "part": finger,
+                "category": "finger",
+            })
 
     found.sort(key=lambda item: (item["category"], item["side"]))
 

@@ -66,11 +66,28 @@ pose_driver_utils.delete_all_parts()
 | `Ankle_L` / `Ankle_R` | lf / rt | ankle | leg | ✅ 四方向 + 双向扭转 |
 | `Toe_L` / `Toe_R` | lf / rt | toe | leg | 跳过 |
 | `Spine1` / `Spine2` / `Spine3` / `Chest` / `Neck` / `Head` | md | spine* | `grp_md_spine_pose_001` | 跳过（v2 前后左右+扭转） |
-| `Thumb/Index/Middle/Ring/Pinky_L/R` | lf / rt | 手指 | `grp_md_finger_pose_001` | 跳过（v2 多关节） |
+| `ThumbFinger/IndexFinger/MiddleFinger/RingFinger/PinkyFinger 1~4_L/R` | lf / rt | 手指 | `grp_md_finger_pose_001` | ✅ 整指：1/2/3 节 + 融合 |
 
 八方向只给两轴大范围摆动的上臂与大腿。
 
-### 1.1 四肢的两种模式
+### 1.2 手指
+
+入口是每指的 `Finger1` 关节（`IndexFinger1_L`、`ThumbFinger1_L` 等），一次生成整根手指：
+
+| 属性 | 含义 |
+|---|---|
+| `lf_index1_F90` / `lf_index2_F90` / `lf_index3_F90` | 第 1 / 2 / 3 节单独修型 |
+| `lf_index12_F90` | 1+2 两节融合 |
+| `lf_index23_F90` | 2+3 两节融合 |
+| `lf_index123_F90` | 1+2+3 三节融合 |
+
+- 每节弯曲角用骨骼链夹角：`angle(Wrist→Finger1, Finger1→Finger2)`、`angle(Finger1→Finger2, Finger2→Finger3)`、`angle(Finger2→Finger3, Finger3→Finger4)`；
+- 融合属性 = 对应各节门的乘积，所以各节都到 90° 时融合才到 1；
+- 单节修型与融合独立叠加；
+- 拇指按同一套做，第一节也参与融合；
+- 第 4 节只作为向量末端，不做单独修型。
+
+### 1.3 四肢的两种模式
 
 | 模式 | 部位 | 属性 | 算法 |
 |---|---|---|---|
@@ -275,7 +292,7 @@ frontUp   = front · up
 | ankle | F70 / U70 / B70 / D70 / Tws179 |
 | spine1（腰） | F45 / B45 / L45 / R45 / Tws45 |
 | chest（胸） | 同 spine1 |
-| 手指 | 每指节先单独 90° 修型；再叠加两节融合、三节融合；食指 / 拇指 / 中指 / 无名指 / 小指都按这个做；拇指第一节也参与融合 |
+| 手指 | 每指节单独 90° + 两节/三节融合（已实现） |
 
 语义约定：
 
@@ -347,7 +364,7 @@ loc_lf_shoulder_pos_001            locator 姿态指示器
 
 已实现：
 
-- ADV 固定名单扫描，支持 Shoulder / Hip（八方向）、Elbow / Knee（单轴多角度）、Wrist / Ankle（四方向 + 双向扭转）；
+- ADV 固定名单扫描，支持 Shoulder / Hip（八方向）、Elbow / Knee（单轴多角度）、Wrist / Ankle（四方向 + 双向扭转）、手指（整指 1/2/3 节 + 融合）；
 - 驱动源读关节世界矩阵，矩阵差 + 四元数算角度，支持约束驱动的 ADV FK；
 - 四个汇总组收进总组 `grp_md_all_pose_001`，默认 transform 属性隐藏；
 - 部位分隔属性、方向属性命名、driven key 曲线、姿态指示器；
@@ -358,7 +375,7 @@ loc_lf_shoulder_pos_001            locator 姿态指示器
 
 已知限制 / 未决：
 
-1. **八方向只给 Shoulder / Hip**；Elbow / Knee 用单轴多角度，Wrist / Ankle 用四方向 + 扭转；Spine / Chest / Hand / Toe / 手指仍待 v2；
+1. **八方向只给 Shoulder / Hip**；Elbow / Knee 用单轴多角度，Wrist / Ankle 用四方向 + 扭转，手指用整指 1/2/3 节 + 融合；Spine / Chest / Hand / Toe 仍待 v2；
 2. 辅助骨 / 修型目标的映射（方向属性再去驱动辅助骨 rotate 0→30°）未实现，本轮只到属性与曲线；
 3. 镜像只做名字替换，通道符号是否同号需在真实绑定上验证；
 4. 独立 JSON 导入导出未做；
@@ -377,7 +394,7 @@ python -m unittest discover -s tests -v
     "tests\pose_driver_maya_smoke_test.py"
 ```
 
-冒烟覆盖：ADV 固定名单扫描、解析归类、总组与四组层级、默认属性隐藏、属性名与分隔属性、driven key 曲线与端点、姿态指示器、单轴/半程/超限/对角/中立（含 -120° 四元数不跳变）、后摆 70° 阈值、四肢（肘/膝多角度、腕/踝四方向+双向扭转）、一个组多部位、按部位删除、重建恢复、一键生成全部（8 个部位）、删除全部、错误输入。
+冒烟覆盖：ADV 固定名单扫描、解析归类、总组与四组层级、默认属性隐藏、属性名与分隔属性、driven key 曲线与端点、姿态指示器、单轴/半程/超限/对角/中立（含 -120° 四元数不跳变）、后摆 70° 阈值、四肢（肘/膝多角度、腕/踝四方向+双向扭转）、手指（单节 + 两节融合）、一个组多部位、按部位删除、重建恢复、一键生成全部（9 个部位）、删除全部、错误输入。
 
 ---
 

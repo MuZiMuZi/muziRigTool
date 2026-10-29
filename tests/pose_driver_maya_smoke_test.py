@@ -58,6 +58,22 @@ def build_scene():
     cmds.parent(wrist_r, elbow_r, absolute=True)
 
     cmds.select(clear=True)
+    index1_r = cmds.joint(name="IndexFinger1_R", position=(4, 9, 0))
+    cmds.parent(index1_r, wrist_r, absolute=True)
+
+    cmds.select(clear=True)
+    index2_r = cmds.joint(name="IndexFinger2_R", position=(4, 10, 0))
+    cmds.parent(index2_r, index1_r, absolute=True)
+
+    cmds.select(clear=True)
+    index3_r = cmds.joint(name="IndexFinger3_R", position=(4, 11, 0))
+    cmds.parent(index3_r, index2_r, absolute=True)
+
+    cmds.select(clear=True)
+    index4_r = cmds.joint(name="IndexFinger4_R", position=(4, 12, 0))
+    cmds.parent(index4_r, index3_r, absolute=True)
+
+    cmds.select(clear=True)
     hip_l = cmds.joint(name="Hip_L", position=(-4, 0, 0))
 
     cmds.select(clear=True)
@@ -106,6 +122,7 @@ def check_find_supported():
     for name in (
             "Shoulder_L", "Shoulder_R", "Hip_L", "Hip_R",
             "Elbow_R", "Knee_L", "Wrist_R", "Ankle_L",
+            "IndexFinger1_R",
     ):
         assert name in found, u"没有找到：{}".format(name)
 
@@ -450,6 +467,44 @@ def check_rebuild(joint):
     print(u"[ok] 重建：属性与权重恢复")
 
 
+def check_finger(joints):
+    u"""手指：1/2/3 节单独修型 + 两节/三节融合。"""
+
+    result = pose_driver_utils.build_network("IndexFinger1_R")
+    group = result["group"]
+
+    assert group == "grp_md_finger_pose_001", u"手指归类错误"
+
+    for key in ("1", "2", "3", "12", "23", "123"):
+        assert "rt_index" + key + "_F90" in result["attributes"].values(), (
+            u"缺少手指属性：{}".format(key)
+        )
+
+    finger1 = "IndexFinger1_R"
+    finger2 = "IndexFinger2_R"
+
+    cmds.setAttr(finger1 + ".rotateZ", 90.0)
+    assert abs(cmds.getAttr(group + ".rt_index1_F90") - 1.0) < 1e-5, (
+        u"第一节 90° 时 rt_index1_F90 不是 1"
+    )
+    assert abs(cmds.getAttr(group + ".rt_index12_F90")) < 1e-5, (
+        u"第二节没弯时融合 12 应为 0"
+    )
+
+    cmds.setAttr(finger2 + ".rotateZ", 90.0)
+    assert abs(cmds.getAttr(group + ".rt_index2_F90") - 1.0) < 1e-5, (
+        u"第二节 90° 时 rt_index2_F90 不是 1"
+    )
+    assert abs(cmds.getAttr(group + ".rt_index12_F90") - 1.0) < 1e-5, (
+        u"两节都 90° 时融合 12 应为 1"
+    )
+
+    cmds.setAttr(finger1 + ".rotateZ", 0.0)
+    cmds.setAttr(finger2 + ".rotateZ", 0.0)
+
+    print(u"[ok] 手指：单节 + 两节融合")
+
+
 def check_build_all(joints):
     u"""一键生成全部：Shoulder / Hip 都建，其他跳过。"""
 
@@ -458,7 +513,7 @@ def check_build_all(joints):
     )
 
     assert not errors, u"批量生成出错：{}".format(errors)
-    assert len(results) == 8, u"应该生成 8 个，实际 {}".format(len(results))
+    assert len(results) == 9, u"应该生成 9 个，实际 {}".format(len(results))
 
     part_keys = sorted(result["part_key"] for result in results)
 
@@ -469,6 +524,7 @@ def check_build_all(joints):
         "lf_shoulder",
         "rt_elbow",
         "rt_hip",
+        "rt_index",
         "rt_shoulder",
         "rt_wrist",
     ], u"部位列表不对：{}".format(part_keys)
@@ -489,7 +545,7 @@ def check_delete_all():
 
     removed = pose_driver_utils.delete_all_parts()
 
-    assert removed >= 8, u"删除数量不对：{}".format(removed)
+    assert removed >= 9, u"删除数量不对：{}".format(removed)
 
     for category in ("arm", "leg"):
         group = pose_driver_utils.get_group_name(category)
@@ -559,6 +615,7 @@ def main():
     check_rebuild(joints["shoulder_l"])
 
     check_limb(joints)
+    check_finger(joints)
 
     check_build_all(joints)
     check_delete_all()

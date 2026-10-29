@@ -110,6 +110,7 @@ class PoseDriverToolRegistryTests(unittest.TestCase):
 
         for name in (
                 "parse_joint_identity",
+                "parse_finger_joint",
                 "find_supported_joints",
                 "build_all_supported",
                 "get_group_name",
@@ -171,6 +172,9 @@ class PoseDriverToolRegistryTests(unittest.TestCase):
                 "multi_angle_parts",
                 "four_twist_parts",
                 "supported_parts",
+                "finger_defs",
+                "finger_angle",
+                "finger_attribute_suffixes",
                 "twist_angle",
                 "TwsP",
         ):
