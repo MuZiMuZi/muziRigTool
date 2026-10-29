@@ -386,7 +386,7 @@ def check_limb(joints):
 
     wrist = pose_driver_utils.build_network(joints["wrist"])
     wgroup = wrist["group"]
-    wrist_ctrl = "Wrist_R"
+    wrist_ctrl = "FKWrist_R"
 
     cmds.setAttr(wrist_ctrl + ".rotateY", -90.0)
     assert abs(cmds.getAttr(wgroup + ".rt_wrist_U90") - 1.0) < 1e-5, (
@@ -532,7 +532,7 @@ def check_clavicle(joints):
             u"缺少锁骨属性：{}".format(suffix)
         )
 
-    ctrl = "Clavicle_R"
+    ctrl = "FKClavicle_R"
 
     cmds.setAttr(ctrl + ".rotateZ", 45.0)
     assert abs(cmds.getAttr(group + ".rt_clavicle_F45") - 1.0) < 1e-5, (
@@ -562,8 +562,8 @@ def check_finger(joints):
             u"缺少手指属性：{}".format(key)
         )
 
-    finger1 = "IndexFinger1_R"
-    finger2 = "IndexFinger2_R"
+    finger1 = "FKIndexFinger1_R"
+    finger2 = "FKIndexFinger2_R"
 
     cmds.setAttr(finger1 + ".rotateY", 90.0)
     assert abs(cmds.getAttr(group + ".rt_index1_F90") - 1.0) < 1e-5, (
