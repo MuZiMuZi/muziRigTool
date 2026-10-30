@@ -66,7 +66,7 @@ pose_driver_utils.delete_all_parts()
 | `Knee_L` / `Knee_R` | lf / rt | knee | leg | ✅ 单轴多角度 F45 / F90 / F120 |
 | `Ankle_L` / `Ankle_R` | lf / rt | ankle | leg | ✅ 四方向 + 双向扭转 |
 | `Toe_L` / `Toe_R` | lf / rt | toe | leg | 跳过 |
-| `Spine1_M` / `Chest_M` | md | spine1 / chest | `grp_md_spine_pose_001` | ✅ F45 / B45 / L45 / R45 / 双向扭转（读 `*_M` 变形关节世界矩阵） |
+| `Spine1_M` / `Chest_M` | md | spine1 / chest | `grp_md_spine_pose_001` | ✅ F45 / B45 / L45 / R45 / 双向扭转（读 local rotate） |
 | `ThumbFinger/IndexFinger/MiddleFinger/RingFinger/PinkyFinger 1~4_L/R` | lf / rt | 手指 | `grp_md_finger_pose_001` | ✅ 整指：1/2/3 节 + 融合 |
 
 八方向只给两轴大范围摆动的上臂与大腿。
@@ -182,41 +182,35 @@ grp_md_arm_pose_001
 
 ## 3. 门控原理
 
-### 3.1 驱动源：世界矩阵 + 四元数
+### 3.1 驱动源：关节 local rotate
 
-ADV 的 FK 控制器通过约束驱动关节，关节自己的 rotate 通道不变，所以不能读局部 rotate。
-工具读关节的 `worldMatrix`，构建时记录 neutral 世界矩阵的逆：
-
-```text
-R = neutral⁻¹ × current worldMatrix
-```
-
-把 R 分解成四元数，绕轴角度用：
+ADV 的约束驱动会修改 deform 关节的 local rotate（实测 `Chest_M` 会跟着控制器变），
+而父级旋转不会串进子关节的 local——手肘动时 `Wrist_R` 的 local 不变。
+所以统一读关节的 local rotate：
 
 ```text
-angleX = 2 * atan2(qx, qw)
-angleY = 2 * atan2(qy, qw)
-angleZ = 2 * atan2(qz, qw)
+deltaX = 关节 rotateX − neutralX
+deltaY = 关节 rotateY − neutralY
+deltaZ = 关节 rotateZ − neutralZ
 ```
 
-四元数 q 与 -q 表示同一旋转，先统一到 `w ≥ 0`，否则 -120° 会被算成 +240°。
-这样超过 90°、接近 180° 都不会像欧拉分解那样跳变。
+好处：
 
-实现上是一段 MEL expression（`expr_<side>_<part>_<role>_001`），
-输入是 decomposeMatrix 的 quat 分量，输出三个轴的角度。
+- 不依赖控制器（IK 下控制器可能失效）；
+- 不叠父级旋转（手肘动不会带动手腕属性）；
+- 没有 jointOrient / 世界矩阵分解的斜轴问题。
 
-**肘 / 膝例外：用骨骼链向量夹角。** 关节的世界旋转轴是一条斜轴
-（实测 `Elbow_L` 弯 85.8° 时轴是 (-0.50, -0.87, 0)），单轴分量还原不出角度；
-而膝/肘在 IK 模式下控制器也不可靠。所以改用骨骼链夹角：
+各部位读的轴：
 
-```text
-elbow: angle( Shoulder→Elbow , Elbow→Wrist )
-knee:  angle( Hip→Knee , Knee→Ankle )
-```
-
-- IK / FK / 拉伸都有效，量的是骨骼实际朝向；
-- 不依赖 jointOrient，不存在斜轴问题；
-- 伸直约 0°，弯 90° 就是 90°。
+| 部位 | 轴 |
+|---|---|
+| Shoulder / Hip | rotateY（上下）、rotateZ（前后） |
+| Elbow | rotateZ |
+| Knee | rotateX |
+| Wrist / Ankle | rotateY（上下）、rotateZ（左右）、rotateX（扭转） |
+| Clavicle | rotateY（上下）、rotateZ（前后） |
+| Spine1 / Chest | rotateX（前后）、rotateY（扭转）、rotateZ（左右） |
+| 手指 | 每节 rotateY |
 
 多角度按「45 交棒、90 之后保留」：
 
@@ -376,7 +370,7 @@ loc_lf_shoulder_pos_001            locator 姿态指示器
 已实现：
 
 - ADV 固定名单扫描，支持 Shoulder / Hip（八方向）、Clavicle（F45/U45/D45）、Elbow / Knee（单轴多角度）、Wrist / Ankle（四方向 + 双向扭转）、Spine1 / Chest（前后左右 + 扭转）、手指（整指 1/2/3 节 + 融合）；
-- 驱动源读关节世界矩阵，矩阵差 + 四元数算角度，支持约束驱动的 ADV FK；
+- 驱动源统一读关节 local rotate，不依赖控制器、不叠父级旋转、无斜轴问题；
 - 四个汇总组收进总组 `grp_md_all_pose_001`，默认 transform 属性隐藏；
 - 部位分隔属性、方向属性命名、driven key 曲线、姿态指示器；
 - 一键生成全部 / 删除全部；
