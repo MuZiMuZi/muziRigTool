@@ -90,10 +90,21 @@ class RbfPoseDriverTool(QtWidgets.QDialog):
         self.refresh()
 
 
+_window = None
+
+
+def main():
+    u"""工具箱入口：打开 RBF 窗口并保持引用。"""
+
+    global _window
+
+    _window = RbfPoseDriverTool(parent=None)
+    _window.show()
+
+    return _window
+
+
 def show():
-    u"""打开窗口（保持引用，避免被回收）。"""
+    u"""兼容旧入口，等同于 main。"""
 
-    dialog = RbfPoseDriverTool(parent=None)
-    dialog.show()
-
-    return dialog
+    return main()
