@@ -27,7 +27,7 @@ from maya import cmds
 from maya.api import OpenMaya as om
 
 from . import pose_gate_math
-from ..common import scene_utils
+from . import hierarchy_utils
 
 
 owner_value = "muziRigTool.poseDriver"
@@ -252,7 +252,7 @@ def validate_joint(joint):
         RuntimeError: 节点不存在，或类型不是 joint。
     """
 
-    scene_utils.validate_node(joint, u"驱动关节")
+    hierarchy_utils.validate_node(joint, u"驱动关节")
 
     if cmds.nodeType(joint) != "joint":
         raise RuntimeError(u"驱动源必须是关节，收到：{}".format(joint))
@@ -2656,7 +2656,7 @@ def _delete_nodes(nodes):
 def _validate_group(group):
     u"""校验节点是本工具创建的汇总组。"""
 
-    scene_utils.validate_node(group, u"汇总组")
+    hierarchy_utils.validate_node(group, u"汇总组")
 
     if not cmds.attributeQuery(owner_attr, node=group, exists=True):
         raise RuntimeError(

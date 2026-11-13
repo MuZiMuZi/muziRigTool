@@ -168,7 +168,8 @@ def snap_to_average(reference_items, target_item, include_rotation=True):
         include_rotation (bool): 是否同时应用平均旋转。
 
     Returns:
-        dict: {"position": [...], "rotation": [...] 或 None}
+        dict: ``position`` 是平均位置；``rotation`` 是平均旋转（未启用或写入失败时为 None）；
+        ``rotation_error`` 只在旋转写入失败时出现，内容是失败原因。
 
     Raises:
         RuntimeError: 没有参考项、目标为空或取不到有效位置。
@@ -218,8 +219,16 @@ def snap_to_average(reference_items, target_item, include_rotation=True):
 
     try:
         cmds.xform(target_item, worldSpace=True, rotation=average_rotation)
-        result["rotation"] = average_rotation
-    except Exception:
-        pass
+    except Exception as error:
+        # 位置已经吸附成功了，旋转失败不该让整个操作失败；
+        # 但也不能静默吞掉——把原因带回给调用方，调用方才能决定要不要处理。
+        result["rotation_error"] = str(error)
+        cmds.warning(
+            u"位置已吸附，旋转设置失败：{}".format(error)
+        )
+
+        return result
+
+    result["rotation"] = average_rotation
 
     return result

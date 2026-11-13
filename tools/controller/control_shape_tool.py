@@ -17,7 +17,7 @@ u"""控制器形状工具。
     │ [删除选中形状]                 │
     └───────────────────────────────┘
 
-形状数据操作在 core.rigging.ctrl_utils.Ctrl 里。
+形状数据操作在 core.ctrl_utils.Ctrl 里。
 """
 
 import os
@@ -27,7 +27,7 @@ from PySide2 import QtCore, QtGui, QtWidgets
 from maya import cmds
 from maya.app.general.mayaMixin import MayaQWidgetBaseMixin
 
-from ...core.rigging.ctrl_utils import Ctrl
+from ...core.ctrl_utils import Ctrl
 from ...ui import theme
 
 

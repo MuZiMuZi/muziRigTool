@@ -28,7 +28,7 @@ from PySide2 import QtWidgets
 from maya import cmds
 from maya.app.general.mayaMixin import MayaQWidgetBaseMixin
 
-from ...core.rigging import jntbas_utils
+from ...core import jntbas_utils
 from ...ui import theme
 
 
@@ -119,7 +119,7 @@ class JntbasTool(MayaQWidgetBaseMixin, QtWidgets.QWidget):
             if cmds.nodeType(node) != "joint":
                 continue
 
-            if not jntbas_utils.get_short_name(node).startswith("jnt_"):
+            if not jntbas_utils.get_bare_name(node).startswith("jnt_"):
                 continue
 
             joints.append(cmds.ls(node, long=True)[0])

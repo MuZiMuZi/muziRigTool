@@ -20,10 +20,10 @@ from importlib import import_module, reload
 # 按依赖顺序：底层在前，上层在后
 reload_order = (
     "muziRigTool.ui.theme",
-    "muziRigTool.core.common.rename_utils",
-    "muziRigTool.core.common.scene_utils",
-    "muziRigTool.core.rigging.snap_utils",
-    "muziRigTool.core.rigging.ctrl_utils",
+    "muziRigTool.core.rename_utils",
+    "muziRigTool.core.hierarchy_utils",
+    "muziRigTool.core.snap_utils",
+    "muziRigTool.core.ctrl_utils",
     "muziRigTool.tools",
     "muziRigTool.app.toolbox",
 )

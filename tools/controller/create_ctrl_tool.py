@@ -32,7 +32,7 @@ from PySide2 import QtCore, QtGui, QtWidgets
 from maya import cmds
 from maya.app.general.mayaMixin import MayaQWidgetBaseMixin
 
-from ...core.rigging.ctrl_utils import Ctrl
+from ...core.ctrl_utils import Ctrl
 from ...ui.widgets.color_picker import ColorPicker
 from ...ui.widgets.size_picker import SizePicker
 

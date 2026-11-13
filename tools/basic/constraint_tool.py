@@ -25,7 +25,7 @@ from PySide2 import QtWidgets
 from maya import cmds
 from maya.app.general.mayaMixin import MayaQWidgetBaseMixin
 
-from ...core.rigging import constraint_utils
+from ...core import constraint_utils
 from ...ui import theme
 
 

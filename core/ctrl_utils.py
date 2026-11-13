@@ -27,8 +27,8 @@ import os
 
 import maya.cmds as cmds
 
-from ..common.attr_utils import Attr
-from ..common.hierarchy_utils import ensure_group_at
+from .attr_utils import Attr
+from .hierarchy_utils import ensure_group_at
 
 
 # 控制器层级，从内到外排列。
@@ -80,14 +80,16 @@ def _rotate_point(point, degrees):
 class Ctrl(object):
     u"""单个 Maya 控制器。"""
 
-    # 形状库目录：从本文件往上三层到包根，再进 resources。
-    # core/rigging/ctrl_utils.py -> core -> muziRigTool
+    # 形状库目录：从本文件往上两层到包根，再进 resources。
+    # core/ctrl_utils.py -> core -> muziRigTool
+    #
+    # 注意层数：2026-11-13 core 压平成单层目录之前，这个文件在 core/rigging/ 下，
+    # 那时需要三层 dirname 才能到包根。文件上移一层后必须同步改成两层，
+    # 否则会算到 scripts/resources/controller_shapes 这种不存在的路径。
     shape_dir = os.path.join(
         os.path.dirname(
             os.path.dirname(
-                os.path.dirname(
-                    os.path.abspath(__file__)
-                )
+                os.path.abspath(__file__)
             )
         ),
         "resources",
@@ -118,6 +120,20 @@ class Ctrl(object):
 
     def __repr__(self):
         return "<Ctrl {}>".format(self.name)
+
+    def _require_ctrl_name(self):
+        u"""确保名称里带 ``ctrl_``，否则派生组名会静默算错。
+
+        ``_ensure_parent`` / ``_ensure_output`` / ``create_sub_ctrl`` 都是用
+        ``self.name.replace("ctrl_", 前缀 + "_", 1)`` 生成组名的。
+        名字里没有 ``ctrl_`` 时 replace 什么也不做，五层组会全部撞成同一个名字，
+        而且不报错——排查这种问题很费时间，所以在这里提前拦住。
+        """
+
+        if "ctrl_" not in self.name:
+            raise ValueError(
+                u"控制器名称必须包含 ctrl_ 才能生成层级：{}".format(self.name)
+            )
 
     # ------------------------------------------------------------------
     # 创建
@@ -180,8 +196,13 @@ class Ctrl(object):
             )
 
         if hierarchy:
-            ctrl.create_hierarchy(sub_ctrl=True, sub_shape=shape,
-                         sub_color=color, sub_size=size*0.7,axis = axis)
+            ctrl.create_hierarchy(
+                sub_ctrl=True,
+                sub_shape=shape,
+                sub_color=color,
+                sub_size=size * 0.7,
+                axis=axis
+            )
 
         return ctrl
 
@@ -208,7 +229,7 @@ class Ctrl(object):
         if not os.path.exists(path):
             raise ValueError(u"形状不存在：{}".format(shape_name))
 
-        with open(path, "r") as handle:
+        with open(path, "r", encoding="utf-8") as handle:
             return json.load(handle)
 
     @classmethod
@@ -321,6 +342,32 @@ class Ctrl(object):
             cmds.setAttr(shape + ".overrideEnabled", 1)
             cmds.setAttr(shape + ".overrideColor", color)
 
+    def _map_cvs(self, mutator):
+        u"""对每个形状的每个 CV 做一次「读坐标 → 变换 → 写回」。
+
+        set_size / set_axis / rotate_shape / mirror_shape 原来各抄了一遍
+        同样的双重循环，这里收成一份，以后要改只需改这一处。
+
+        坐标用 objectSpace（相对控制器自身）：只动曲线点，不动 transform 的 TRS。
+
+        Args:
+            mutator (callable): 接收 [x, y, z]，返回新的 [x, y, z]。
+        """
+
+        for shape in self.get_shapes():
+            for cv in cmds.ls(shape + ".cv[*]", flatten=True) or []:
+                position = cmds.xform(
+                    cv,
+                    query=True,
+                    translation=True,
+                    objectSpace=True
+                )
+                cmds.xform(
+                    cv,
+                    translation=mutator(position),
+                    objectSpace=True
+                )
+
     def set_size(self, size):
         u"""按倍率缩放形状的 CV。
 
@@ -334,20 +381,9 @@ class Ctrl(object):
         if size <= 0:
             raise ValueError(u"size 必须大于 0，收到：{}".format(size))
 
-        for shape in self.get_shapes():
-            # 逐个 CV 读写坐标，坐标是 objectSpace（相对于控制器自身）。
-            for cv in cmds.ls(shape + ".cv[*]", flatten=True):
-                position = cmds.xform(
-                    cv,
-                    query=True,
-                    translation=True,
-                    objectSpace=True
-                )
-                cmds.xform(
-                    cv,
-                    translation=[value * size for value in position],
-                    objectSpace=True
-                )
+        self._map_cvs(
+            lambda position: [value * size for value in position]
+        )
 
     def set_axis(self, axis):
         u"""按绝对轴向旋转形状的 CV。
@@ -376,19 +412,9 @@ class Ctrl(object):
         if rotation == (0.0, 0.0, 0.0):
             return
 
-        for shape in self.get_shapes():
-            for cv in cmds.ls(shape + ".cv[*]", flatten=True):
-                position = cmds.xform(
-                    cv,
-                    query=True,
-                    translation=True,
-                    objectSpace=True
-                )
-                cmds.xform(
-                    cv,
-                    translation=_rotate_point(position, rotation),
-                    objectSpace=True
-                )
+        self._map_cvs(
+            lambda position: _rotate_point(position, rotation)
+        )
 
     def rotate_shape(self, degrees):
         u"""把形状绕自身中心旋转。
@@ -402,19 +428,9 @@ class Ctrl(object):
 
         rotation = (0.0, 0.0, float(degrees))
 
-        for shape in self.get_shapes():
-            for cv in cmds.ls(shape + ".cv[*]", flatten=True):
-                position = cmds.xform(
-                    cv,
-                    query=True,
-                    translation=True,
-                    objectSpace=True
-                )
-                cmds.xform(
-                    cv,
-                    translation=_rotate_point(position, rotation),
-                    objectSpace=True
-                )
+        self._map_cvs(
+            lambda position: _rotate_point(position, rotation)
+        )
 
     def mirror_shape(self, axis="x"):
         u"""沿指定轴镜像形状。
@@ -435,21 +451,13 @@ class Ctrl(object):
 
         index = indices[axis]
 
-        for shape in self.get_shapes():
-            for cv in cmds.ls(shape + ".cv[*]", flatten=True):
-                position = cmds.xform(
-                    cv,
-                    query=True,
-                    translation=True,
-                    objectSpace=True
-                )
-                position[index] = -position[index]
+        def mirror(position):
+            values = list(position)
+            values[index] = -values[index]
 
-                cmds.xform(
-                    cv,
-                    translation=position,
-                    objectSpace=True
-                )
+            return values
+
+        self._map_cvs(mirror)
 
     # ------------------------------------------------------------------
     # 形状库
@@ -499,7 +507,14 @@ class Ctrl(object):
         path = os.path.join(self.shape_dir, shape_name + ".json")
 
         with open(path, "w", encoding="utf-8") as handle:
-            json.dump(self.get_shape_data(), handle)
+            # indent + ensure_ascii=False：存出来的 json 人能读、能 diff，
+            # 中文也保持原样，而不是被转成 \uXXXX。
+            json.dump(
+                self.get_shape_data(),
+                handle,
+                indent=4,
+                ensure_ascii=False
+            )
 
         return path
 
@@ -543,7 +558,7 @@ class Ctrl(object):
     # ------------------------------------------------------------------
 
     def create_hierarchy(self, sub_ctrl=True, sub_shape="circle",
-                         sub_color=17, sub_size=0.7,axis = 'X+'):
+                         sub_color=17, sub_size=0.7, axis="X+"):
         u"""创建完整控制器层级。
 
         从 ctrl 开始，由内向外一层层包：
@@ -575,7 +590,7 @@ class Ctrl(object):
                 shape=sub_shape,
                 color=sub_color,
                 size=sub_size,
-                axis = axis
+                axis=axis
             )
 
         self._ensure_output()
@@ -588,6 +603,8 @@ class Ctrl(object):
         「确保」= 有就复用、没有就建、挂错了就纠正，
         所以这个方法执行一次和十次的结果完全一样。
         """
+
+        self._require_ctrl_name()
 
         # 组名始终从主控制器名生成。
         # 不能写成 child.replace(...)：第二次循环时 child 已经是 offset_xxx，
@@ -613,6 +630,8 @@ class Ctrl(object):
         subctrl 被隐藏时，output 下面的物体不会被一起隐藏。
         """
 
+        self._require_ctrl_name()
+
         output_name = self.name.replace("ctrl_", "output_", 1)
 
         group = ensure_group_at(output_name, self.name)
@@ -624,7 +643,7 @@ class Ctrl(object):
 
         return group
 
-    def create_sub_ctrl(self, shape="circle", color=17, size=0.7,axis = 'X+'):
+    def create_sub_ctrl(self, shape="circle", color=17, size=0.7, axis="X+"):
         u"""创建次级控制器，并把变换连接到 output。
 
         为什么是连接而不是父子关系：
@@ -639,6 +658,8 @@ class Ctrl(object):
         Returns:
             Ctrl: 次级控制器。
         """
+
+        self._require_ctrl_name()
 
         sub_name = self.name.replace("ctrl_", "subctrl_", 1)
 
@@ -657,7 +678,7 @@ class Ctrl(object):
                 size=size,
                 target=self.name,
                 hierarchy=False,
-                axis = axis
+                axis=axis
             )
             cmds.parent(sub.name, self.name, absolute=True)
 

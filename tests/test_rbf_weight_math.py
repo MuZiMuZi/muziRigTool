@@ -1,9 +1,24 @@
 # coding=utf-8
 """rbf_weight_math 纯数学单测。"""
 
+import os
+import sys
 import unittest
 
-from core.deformation import rbf_weight_math
+
+PACKAGE_PARENT = os.path.dirname(
+    os.path.dirname(
+        os.path.dirname(
+            os.path.abspath(__file__)
+        )
+    )
+)
+
+if PACKAGE_PARENT not in sys.path:
+    sys.path.insert(0, PACKAGE_PARENT)
+
+
+from muziRigTool.core import rbf_weight_math
 
 
 class DistanceTest(unittest.TestCase):

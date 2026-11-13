@@ -24,14 +24,18 @@ constraint_types = [
     "poleVectorConstraint",
 ]
 
-# 标准约束：驱动一个对象，可以多个 driver
-standard_commands = {
-    "parentConstraint": cmds.parentConstraint,
-    "pointConstraint": cmds.pointConstraint,
-    "orientConstraint": cmds.orientConstraint,
-    "scaleConstraint": cmds.scaleConstraint,
-    "aimConstraint": cmds.aimConstraint,
-}
+# 标准约束：驱动一个对象，可以多个 driver。
+#
+# 这里只存命令名，不存 cmds.xxx 的函数对象：
+# 导入时就取函数会让 Maya 提前加载全部命令，而且 reload(maya.cmds) 之后
+# 字典里仍然是旧引用。调用时再 getattr 取当前那个。
+standard_commands = (
+    "parentConstraint",
+    "pointConstraint",
+    "orientConstraint",
+    "scaleConstraint",
+    "aimConstraint",
+)
 
 
 def create_constraint(
@@ -62,12 +66,12 @@ def create_constraint(
     if not driven_object or not cmds.objExists(driven_object):
         raise RuntimeError(u"Driven 无效：{}".format(driven_object))
 
-    command = standard_commands.get(constraint_type)
-
-    if command is None:
+    if constraint_type not in standard_commands:
         raise ValueError(
             u"不支持的标准约束类型：{}".format(constraint_type)
         )
+
+    command = getattr(cmds, constraint_type)
 
     result = command(
         driver_objects,

@@ -10,7 +10,7 @@ TOOL_MODE = "action"：双击直接执行，不建窗口。
 
 from maya import cmds
 
-from ...core.rigging import snap_utils
+from ...core import snap_utils
 
 
 TOOL_MODE = "action"

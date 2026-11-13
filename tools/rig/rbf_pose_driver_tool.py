@@ -4,7 +4,7 @@
 from maya import cmds
 from PySide2 import QtWidgets
 
-from ...core.deformation import rbf_pose_driver_utils
+from ...core import rbf_pose_driver_utils
 
 
 class RbfPoseDriverTool(QtWidgets.QDialog):

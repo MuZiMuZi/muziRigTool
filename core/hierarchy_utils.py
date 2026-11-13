@@ -1,19 +1,19 @@
 # coding=utf-8
-u"""层级与组操作。
+u"""层级、组与节点校验。
 
 这些是纯粹的 Maya DAG 操作，和具体业务无关：
 
     ensure_group        确保组存在，不存在就创建
     parent_keep_world   挂到父级下，保持世界位置
     ensure_group_at     确保组存在，并对齐到某个节点
+    get_child_object    取对象自身及指定类型的全部子物体，Long Path，父级在前
+    validate_node       校验节点名可用：非空、是 Node 而非 Plug、且存在于场景
+    get_long_name       取节点 Long Path，名称不唯一时报错
 
-绑定模块、控制器工具、清理工具都会用到，所以放在 core 层。
+绑定模块、控制器工具都会用到，所以放在 core 层。
 
-为什么单独一个文件而不是塞进 scene_utils：
-
-    scene_utils 负责清理和查询，偏「扫描场景」；
-    这里负责「调整层级」，偏「构造结构」。
-    两者职责不同，混在一起会让 scene_utils 越来越杂。
+2026-11-13：原 core/scene_utils.py 只剩 validate_node / get_long_name
+两个函数，已并入本文件，scene_utils 删除。
 """
 
 from maya import cmds
@@ -140,3 +140,92 @@ def get_child_object(object, type="joint"):
     object_list.reverse()
 
     return object_list
+
+
+def validate_node(node, label=None):
+    u"""校验节点名可用。
+
+    拦截三种情况：名称为空、名带点号（其实是 Plug / Component）、名称不在场景里。
+
+    Args:
+        node (str):
+            需要校验的 Maya 节点名或 DAG Path，例如 "root"、"|grp|root"。
+        label (str | None):
+            报错时显示的对象称谓，例如 "根关节"、"模型"；None 时用 "maya节点"。
+
+    Returns:
+        bool:
+            校验通过返回 True。
+
+    Raises:
+        RuntimeError:
+            名称为空、是 Plug / Component，或节点不存在时抛出。
+    """
+
+    display_label = label or u"maya节点"
+
+    # 先挡 None：直接 str(None) 会变成 "None"，错误信息会误导。
+    if node is None:
+        raise RuntimeError(
+            u"{}名称不能为空。".format(display_label)
+        )
+
+    node = str(node).strip()
+
+    if not node:
+        raise RuntimeError(
+            u"{}名称不能为空。".format(display_label)
+        )
+
+    # 带点号说明传进来的是属性或组件，不是节点。
+    if "." in node:
+        raise RuntimeError(
+            u"{}必须是 Maya Node，不能是 Plug / Component：{}".format(
+                display_label,
+                node
+            )
+        )
+
+    if not cmds.objExists(node):
+        raise RuntimeError(
+            u"{}不存在：{}".format(display_label, node)
+        )
+
+    return True
+
+
+def get_long_name(node):
+    u"""取节点的 Long Path。
+
+    短名在场景里对应多个节点时直接报错，避免后面操作到错误的那个。
+
+    Args:
+        node (str):
+            需要查询的 Maya 节点名或 DAG Path。
+
+    Returns:
+        str:
+            节点的完整路径。
+
+    Raises:
+        RuntimeError:
+            节点名不可用，或短名对应多个节点时抛出。
+    """
+
+    # 先过一遍通用校验：空名 / Plug / 不存在都在这里拦掉。
+    validate_node(node)
+
+    matches = cmds.ls(node, long=True)
+
+    if matches is None:
+        matches = []
+
+    if not matches:
+        return str(node)
+
+    if len(matches) > 1:
+        raise RuntimeError(
+            u"节点名称不唯一，请使用完整路径：{}".format(node)
+        )
+
+    return matches[0]

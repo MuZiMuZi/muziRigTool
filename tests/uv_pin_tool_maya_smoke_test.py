@@ -27,7 +27,7 @@ import uuid
 
 import maya.cmds as cmds
 
-from ..core.rigging import uv_pin_utils
+from ..core import uv_pin_utils
 
 
 # =============================================================================

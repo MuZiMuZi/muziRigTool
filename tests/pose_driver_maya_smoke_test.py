@@ -31,7 +31,7 @@ maya.standalone.initialize(name="python")
 
 from maya import cmds
 
-from muziRigTool.core.deformation import pose_driver_utils
+from muziRigTool.core import pose_driver_utils
 
 
 def build_scene():

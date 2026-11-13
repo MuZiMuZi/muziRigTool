@@ -81,7 +81,7 @@ rbf_pose_driver_tool.show()
 也可以直接调接口：
 
 ```python
-from core.deformation import rbf_pose_driver_utils
+from core import rbf_pose_driver_utils
 
 results, errors = rbf_pose_driver_utils.build_all_supported()
 rbf_pose_driver_utils.delete_all_rbf_parts()

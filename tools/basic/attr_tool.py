@@ -31,7 +31,7 @@ from PySide2 import QtWidgets
 from maya import cmds
 from maya.app.general.mayaMixin import MayaQWidgetBaseMixin
 
-from ...core.common.attr_utils import Attr
+from ...core.attr_utils import Attr
 from ...ui import theme
 
 

@@ -26,7 +26,7 @@ maya.standalone.initialize(name="python")
 
 from maya import cmds
 
-from core.deformation import rbf_pose_driver_utils
+from muziRigTool.core import rbf_pose_driver_utils
 
 
 def build_scene():

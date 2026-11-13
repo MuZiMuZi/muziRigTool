@@ -33,11 +33,11 @@ TOOL_PATH = os.path.join(
     "pose_driver_tool.py",
 )
 
+# 2026-11-13：core 压平成单层目录，路径里不再有 deformation 这一层。
 UTILS_PATH = os.path.join(
     PACKAGE_PARENT,
     "muziRigTool",
     "core",
-    "deformation",
     "pose_driver_utils.py",
 )
 
@@ -45,7 +45,6 @@ MATH_PATH = os.path.join(
     PACKAGE_PARENT,
     "muziRigTool",
     "core",
-    "deformation",
     "pose_gate_math.py",
 )
 

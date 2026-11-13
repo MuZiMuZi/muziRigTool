@@ -26,7 +26,7 @@ import uuid
 
 import maya.cmds as cmds
 
-from ..core.rigging import jntbas_utils
+from ..core import jntbas_utils
 
 
 # =============================================================================

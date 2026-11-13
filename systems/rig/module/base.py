@@ -24,10 +24,10 @@ u"""RigModule：绑定模块基础实现。
 
 from maya import cmds
 
-from ....core.common.hierarchy_utils import ensure_group, parent_keep_world
-from ....core.common.name_utils import Name
-from ....core.rigging.ctrl_utils import Ctrl
-from ....core.rigging.jnt_utils import Jnt
+from ....core.hierarchy_utils import ensure_group, parent_keep_world
+from ....core.name_utils import Name
+from ....core.ctrl_utils import Ctrl
+from ....core.jnt_utils import Jnt
 
 
 class RigModule(object):

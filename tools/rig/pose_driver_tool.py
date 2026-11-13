@@ -28,7 +28,7 @@ u"""姿态驱动修型。
 其他部位（Elbow / Wrist / Knee / Ankle / Spine / Chest）本轮跳过，
 等 v2 按单轴多角度、扭转等模式实现。
 
-核心逻辑在 core.deformation.pose_driver_utils。
+核心逻辑在 core.pose_driver_utils。
 """
 
 from PySide2 import QtCore, QtWidgets
@@ -36,8 +36,8 @@ from PySide2 import QtCore, QtWidgets
 from maya import cmds
 from maya.app.general.mayaMixin import MayaQWidgetBaseMixin
 
-from ...core.deformation import pose_driver_utils
-from ...core.deformation import pose_gate_math
+from ...core import pose_driver_utils
+from ...core import pose_gate_math
 from ...ui import theme
 
 

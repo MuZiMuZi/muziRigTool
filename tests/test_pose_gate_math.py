@@ -22,7 +22,7 @@ if PACKAGE_PARENT not in sys.path:
     sys.path.insert(0, PACKAGE_PARENT)
 
 
-from muziRigTool.core.deformation import pose_gate_math
+from muziRigTool.core import pose_gate_math
 
 
 ANGLE = 45.0

@@ -23,14 +23,14 @@ u"""批量重命名工具。
     └──────────────────────────────┘
     状态：准备就绪
 
-实际改名全部交给 core.common.rename_utils，这里只收集参数、显示结果。
+实际改名全部交给 core.rename_utils，这里只收集参数、显示结果。
 """
 
 from PySide2 import QtWidgets
 
 from maya.app.general.mayaMixin import MayaQWidgetBaseMixin
 
-from ...core.common import rename_utils
+from ...core import rename_utils
 
 
 class RenameWindow(MayaQWidgetBaseMixin, QtWidgets.QWidget):

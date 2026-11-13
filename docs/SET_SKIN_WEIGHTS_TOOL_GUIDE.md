@@ -219,7 +219,7 @@ muziRigTool/
 两个必须记住的仓库约束：
 
 1. `core` 不允许反向 import `tools / ui / app / systems`；
-2. `tools / ui / systems` 里不允许直接调用 `cmds.undoInfo`，统一走 `core.common.scene_utils`。
+2. `tools / ui / systems` 里不允许直接调用 `cmds.undoInfo`，统一走 `core.scene_utils`。
 
 本工具的 Undo 由 core 的 `bind_chain_skin()` 内部管理，UI 不碰 Undo，正好符合约束。
 
@@ -280,8 +280,8 @@ import maya.cmds as cmds
 from maya.api import OpenMaya as om
 from maya.api import OpenMayaAnim as oma
 
-from ..common import hierarchy_utils
-from ..common import scene_utils
+from . import hierarchy_utils
+from . import scene_utils
 
 
 def collect_chain_joints(root_joint):
@@ -320,7 +320,7 @@ def collect_chain_joints(root_joint):
 
 ```python
 import maya.cmds as cmds
-from muziRigTool.core.deformation import chain_skin_utils
+from muziRigTool.core import chain_skin_utils
 
 cmds.file(new=True, force=True)
 
@@ -451,7 +451,7 @@ def get_mesh_points(dag):
 ### 5.4 验证
 
 ```python
-from muziRigTool.core.deformation import chain_skin_utils
+from muziRigTool.core import chain_skin_utils
 
 dag = chain_skin_utils.get_shape_dag_path("body")
 points = chain_skin_utils.get_mesh_points(dag)
@@ -1379,7 +1379,7 @@ def bind_chain_geodesic(
 选中网格和根关节：
 
 ```python
-from muziRigTool.core.deformation import chain_skin_utils
+from muziRigTool.core import chain_skin_utils
 
 mesh, root = chain_skin_utils.get_selection_mesh_and_root()
 result = chain_skin_utils.bind_chain_skin(mesh, root)
@@ -1454,7 +1454,7 @@ except ImportError:
         QWidget,
     )
 
-from ...core.deformation import chain_skin_utils
+from ...core import chain_skin_utils
 from ...ui import theme
 from ...ui import window_utils
 
@@ -1663,7 +1663,7 @@ import maya.cmds as cmds
 from maya.api import OpenMaya as om
 from maya.api import OpenMayaAnim as oma
 
-from muziRigTool.core.deformation import chain_skin_utils
+from muziRigTool.core import chain_skin_utils
 
 
 def _as_node(name):
@@ -1886,8 +1886,8 @@ import maya.cmds as cmds
 from maya.api import OpenMaya as om
 from maya.api import OpenMayaAnim as oma
 
-from ..common import hierarchy_utils
-from ..common import scene_utils
+from . import hierarchy_utils
+from . import scene_utils
 
 
 # ---------------------------------------------------------------------------

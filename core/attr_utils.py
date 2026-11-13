@@ -37,6 +37,15 @@ class Attr(object):
     """
 
     def __init__(self, node, attr=None):
+        u"""绑定一个节点，可选地绑定一个属性。
+
+        Args:
+            node (str): Maya 节点名。
+            attr (str | None): 常用属性名。绑定之后调用方可以省略 attr 参数；
+                只有 connect_to / disconnect_from 必须绑定，
+                因为它们没有单独接收源属性名的入口。
+        """
+
         self.node = node
         self.attr = attr
 
@@ -84,8 +93,15 @@ class Attr(object):
         if not self.attr_exists(name):
             return None
 
-        if cmds.attributeQuery(name, node=self.node, attributeType=True):
-            return cmds.attributeQuery(name, node=self.node, attributeType=True)
+        # 查询一次就够：原来把同一个 attributeQuery 调了两次。
+        attr_type = cmds.attributeQuery(
+            name,
+            node=self.node,
+            attributeType=True
+        )
+
+        if attr_type:
+            return attr_type
 
         # 复合属性（如 compound）没有 attributeType
         return "compound"
@@ -220,10 +236,43 @@ class Attr(object):
     # 连接
     # ------------------------------------------------------------------
 
-    def connect_to(self, target_node, target_attr):
-        u"""把当前属性连接到目标属性。"""
+    def _require_attr(self):
+        u"""返回构造时绑定的属性名；没有绑定时明确报错。
 
-        source = "{}.{}".format(self.node, self.attr or "")
+        connect_to / disconnect_from 没有单独接收「源属性名」的参数，
+        只能用 Attr(节点, 属性名) 绑定的那个。以前写的是 ``self.attr or ""``，
+        没绑定时会拼出 ``"node."`` 这种非法 plug，Maya 的报错完全看不出
+        是少传了参数，所以这里提前拦住。
+        """
+
+        if not self.attr:
+            raise RuntimeError(
+                u"{} 没有绑定属性：请用 Attr(节点, 属性名) 创建后再连接。".format(
+                    self.node
+                )
+            )
+
+        return self.attr
+
+    def connect_to(self, target_node, target_attr):
+        u"""把当前属性连接到目标属性。
+
+        Args:
+            target_node (str): 目标节点。
+            target_attr (str): 目标属性名。
+
+        Returns:
+            str: 目标 plug。
+
+        Raises:
+            RuntimeError: 当前实例没有绑定属性，或目标节点不存在。
+        """
+
+        source = "{}.{}".format(self.node, self._require_attr())
+
+        if not cmds.objExists(target_node):
+            raise RuntimeError(u"目标节点不存在：{}".format(target_node))
+
         target = "{}.{}".format(target_node, target_attr)
 
         cmds.connectAttr(source, target, force=True)
@@ -231,9 +280,20 @@ class Attr(object):
         return target
 
     def disconnect_from(self, target_node, target_attr):
-        u"""断开到目标属性的连接。"""
+        u"""断开到目标属性的连接。
 
-        source = "{}.{}".format(self.node, self.attr or "")
+        Args:
+            target_node (str): 目标节点。
+            target_attr (str): 目标属性名。
+
+        Returns:
+            bool: 原本有连接、已经断开时返回 True。
+
+        Raises:
+            RuntimeError: 当前实例没有绑定属性。
+        """
+
+        source = "{}.{}".format(self.node, self._require_attr())
         target = "{}.{}".format(target_node, target_attr)
 
         if cmds.isConnected(source, target):

@@ -50,9 +50,9 @@ u"""脊柱模块：FK 链 + 样条 IK + skinCluster 驱动曲线。
 
 from maya import cmds
 
-from ....core.common.hierarchy_utils import ensure_group, ensure_group_at
-from ....core.common.name_utils import Name
-from ....core.rigging.ctrl_utils import Ctrl
+from ....core.hierarchy_utils import ensure_group, ensure_group_at
+from ....core.name_utils import Name
+from ....core.ctrl_utils import Ctrl
 from .base import RigModule
 
 

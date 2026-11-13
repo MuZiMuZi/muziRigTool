@@ -84,7 +84,7 @@ class Name(object):
         index(int): 节点序号，默认 1。
 
         Maya 使用示例：
-            from muziRigTool.core.common import name_utils
+            from muziRigTool.core import name_utils
             name_object = name_utils.Name(
                 type="ctrl",
                 side="lf",
@@ -133,7 +133,7 @@ class Name(object):
             list: 原始名称按照下划线拆分后的字符串列表。
 
             Maya 使用示例：
-                from muziRigTool.core.common import name_utils
+                from muziRigTool.core import name_utils
                 name_object = name_utils.Name(name="loc_lf_upper_lid_bind_001")
                 print(name_object.part)
         """
@@ -163,7 +163,7 @@ class Name(object):
             str: 组合后的标准名称。
 
             Maya 使用示例：
-                from muziRigTool.core.common import name_utils
+                from muziRigTool.core import name_utils
                 name_object = name_utils.Name(
                     type="loc",
                     side="lf",

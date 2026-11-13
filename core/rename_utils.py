@@ -55,7 +55,14 @@ def get_selected_objects():
 
 
 def get_dag_depth(node):
-    u"""返回节点在 DAG 中的深度。"""
+    u"""返回节点在 DAG 中的深度。
+
+    传进来已经是长名（含 ``|``）时直接数分隔符，省掉一次 cmds.ls。
+    全场景改名要按深度排几千个节点，这一层省下来的调用很可观。
+    """
+
+    if "|" in node:
+        return node.count("|")
 
     long_name = cmds.ls(node, long=True) or [node]
 
@@ -76,10 +83,14 @@ def sort_objects_child_first(objects):
     """
 
     unique = []
+    seen = set()
 
     for node in objects:
-        if node not in unique:
-            unique.append(node)
+        if node in seen:
+            continue
+
+        seen.add(node)
+        unique.append(node)
 
     unique.sort(key=get_dag_depth, reverse=True)
 
@@ -106,6 +117,7 @@ def get_objects_by_scope(scope_name):
             return []
 
         collected = []
+        seen = set()
 
         for node in selected:
             descendants = cmds.listRelatives(
@@ -116,10 +128,14 @@ def get_objects_by_scope(scope_name):
             ) or []
 
             for child in descendants:
-                if child not in collected:
-                    collected.append(child)
+                if child in seen:
+                    continue
 
-            if node not in collected:
+                seen.add(child)
+                collected.append(child)
+
+            if node not in seen:
+                seen.add(node)
                 collected.append(node)
 
         return sort_objects_child_first(collected)

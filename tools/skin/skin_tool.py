@@ -13,7 +13,7 @@ u"""蒙皮工具。
     │ [        绑定蒙皮          ]  │
     └───────────────────────────────┘
 
-核心操作在 core.deformation.skin_utils。
+核心操作在 core.skin_utils。
 """
 
 from PySide2 import QtWidgets
@@ -21,7 +21,7 @@ from PySide2 import QtWidgets
 from maya import cmds
 from maya.app.general.mayaMixin import MayaQWidgetBaseMixin
 
-from ...core.deformation import skin_utils
+from ...core import skin_utils
 from ...ui import theme
 
 

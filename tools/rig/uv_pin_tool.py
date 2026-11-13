@@ -37,7 +37,7 @@ from PySide2 import QtWidgets
 from maya import cmds
 from maya.app.general.mayaMixin import MayaQWidgetBaseMixin
 
-from ...core.rigging import uv_pin_utils
+from ...core import uv_pin_utils
 from ...ui import theme
 
 

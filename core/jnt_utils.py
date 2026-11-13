@@ -25,7 +25,7 @@ import math
 
 import maya.cmds as cmds
 
-from ..common.name_utils import Name
+from .name_utils import Name
 
 
 class Jnt(object):
@@ -189,6 +189,8 @@ class Jnt(object):
 
     @radius.setter
     def radius(self, value):
+        u"""设置关节显示半径。"""
+
         cmds.setAttr(self.name + ".radius", value)
 
     def get_joint_orient(self):
@@ -327,10 +329,28 @@ class JntChain(object):
         return len(self._joints)
 
     def __repr__(self):
+        # 链删除后 root 会被置 None，这里不能直接读 root.name。
+        if self.root is None:
+            return "<JntChain deleted>"
+
         return "<JntChain {} joints, root={}>".format(
             len(self._joints),
             self.root.name
         )
+
+    def _require_joints(self):
+        u"""链已被删除时给出明确错误。
+
+        delete_chain() 之后 root 置 None、关节列表清空。
+        如果继续调用，原本会抛 Maya 那种「节点不存在」或
+        ``'NoneType' object has no attribute 'name'``，
+        看不出是「这条链已经删了」，所以统一在这里拦。
+        """
+
+        if self.root is None or not self._joints:
+            raise RuntimeError(
+                u"这条关节链已经删除，不能继续操作。"
+            )
 
     @staticmethod
     def _collect(root):
@@ -392,6 +412,8 @@ class JntChain(object):
             ValueError: 名称不在链上。
         """
 
+        self._require_joints()
+
         for index, jnt in enumerate(self._joints):
             if jnt.name == name:
                 return index
@@ -401,6 +423,8 @@ class JntChain(object):
     def get_leaf(self):
         u"""返回叶关节。"""
 
+        self._require_joints()
+
         return self._joints[-1]
 
     def get_middle(self):
@@ -409,6 +433,8 @@ class JntChain(object):
         Raises:
             RuntimeError: 链长度小于 3，没有中间关节。
         """
+
+        self._require_joints()
 
         if len(self._joints) < 3:
             raise RuntimeError(u"链长度小于 3，没有中间关节。")
@@ -510,6 +536,8 @@ class JntChain(object):
             ValueError: before 不在当前链上。
         """
 
+        self._require_joints()
+
         if before is None:
             last = self._joints[-1]
 
@@ -573,6 +601,8 @@ class JntChain(object):
             ValueError: 数量不一致，或目标名称已被其他节点占用。
         """
 
+        self._require_joints()
+
         if len(names) != len(self._joints):
             raise ValueError(
                 u"names 数量必须与链长度一致：{} != {}".format(
@@ -603,6 +633,8 @@ class JntChain(object):
         Returns:
             JntChain: 镜像出来的新链。
         """
+
+        self._require_joints()
 
         kwargs = {
             "mirrorYZ": True,
@@ -661,11 +693,19 @@ class JntChain(object):
     def delete_chain(self, keep_children=False):
         u"""删除整条链。
 
+        删除后这条 JntChain 对象就失效了：root 置 None、关节列表清空。
+        之后再调用任何操作都会得到「这条关节链已经删除」的明确报错，
+        而不是 Maya 那种看不出原因的错误。
+
         Args:
             keep_children (bool): True 保留子关节并重挂，False 连子级一起删除。
         """
 
+        if self.root is None or not self._joints:
+            return
+
         self.root.delete_jnt(keep_children=keep_children)
         self._joints = []
+        self.root = None
 
 

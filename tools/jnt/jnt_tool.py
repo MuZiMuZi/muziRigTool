@@ -30,12 +30,12 @@ from PySide2 import QtWidgets
 from maya import cmds
 from maya.app.general.mayaMixin import MayaQWidgetBaseMixin
 
-from ...core.common import rename_utils
-from ...core.deformation import skin_utils
-from ...core.geometry import curve_utils
-from ...core.rigging import constraint_utils
-from ...core.rigging import jnt_utils
-from ...core.rigging import snap_utils
+from ...core import rename_utils
+from ...core import skin_utils
+from ...core import curve_utils
+from ...core import constraint_utils
+from ...core import jnt_utils
+from ...core import snap_utils
 from ...ui import theme
 
 

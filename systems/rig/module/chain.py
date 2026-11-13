@@ -29,7 +29,7 @@ u"""FK 链模块。
 
 from maya import cmds
 
-from ....core.common.name_utils import Name
+from ....core.name_utils import Name
 from .base import RigModule
 
 

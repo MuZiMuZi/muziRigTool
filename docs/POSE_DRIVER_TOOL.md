@@ -28,7 +28,7 @@ launch.launch()
 脚本入口：
 
 ```python
-from muziRigTool.core.deformation import pose_driver_utils
+from muziRigTool.core import pose_driver_utils
 
 # 一键生成场景里所有 Shoulder / Hip
 results, errors = pose_driver_utils.build_all_supported()
