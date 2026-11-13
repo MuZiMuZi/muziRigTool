@@ -14,6 +14,7 @@ systems.rig.module
     arm           手臂：三链 + 手部挂接点
     leg           腿：三链 + 脚部挂接点
     spine         脊柱：FK 链 + 样条 IK + skinCluster 驱动曲线
+    face/         面部模块包（见 face/__init__.py）
 
 实际继承关系（以代码为准）：
 
@@ -23,7 +24,10 @@ systems.rig.module
     │   ├─ Arm                       arm
     │   └─ Leg                       leg
     ├─ IkFkChain                     ikfk_chain
-    └─ Spine                         spine
+    ├─ Spine                         spine
+    └─ FaceModule                    face/base
+        ├─ Jaw                       face/jaw
+        └─ Eye                       face/eye
 
 接线状态：
 

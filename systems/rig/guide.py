@@ -560,3 +560,107 @@ class Guide(object):
             ))
 
         return result
+
+    # ------------------------------------------------------------------
+    # 面部模板（face_guide.ma）
+    # ------------------------------------------------------------------
+
+    def get_face_series(self, prefix):
+        u"""按名字前缀取面部定位器，按名字排序。
+
+        只认「带 locator 形状」的 transform，
+        避免把 locatorShape 这类形状节点也收进来。
+
+        Args:
+            prefix (str): 名字前缀，例如 ``loc_lf_brow_bind_``。
+
+        Returns:
+            list: 定位器名，按短名排序；没有时返回空列表。
+        """
+
+        if not cmds.objExists(self.root_name):
+            return []
+
+        nodes = cmds.listRelatives(
+            self.root_name,
+            allDescendents=True,
+            type="transform",
+            fullPath=True
+        ) or []
+
+        found = []
+
+        for node in nodes:
+            short_name = node.split("|")[-1]
+
+            if not short_name.startswith(prefix):
+                continue
+
+            if not cmds.listRelatives(node, shapes=True, type="locator"):
+                continue
+
+            found.append((short_name, node))
+
+        found.sort(key=lambda item: item[0])
+
+        return [node for _, node in found]
+
+    def get_face_single(self, prefix):
+        u"""取单个面部定位器，没有时返回 None。"""
+
+        items = self.get_face_series(prefix)
+
+        return items[0] if items else None
+
+    def get_face_root(self):
+        u"""面部根定位器。"""
+
+        return self.get_face_single("loc_md_face_root_guide_")
+
+    def get_face_jaw(self):
+        u"""下巴枢轴定位器。"""
+
+        return self.get_face_single("loc_md_face_jaw_guide_")
+
+    def get_face_eye(self, side="lf"):
+        u"""眼球中心定位器。"""
+
+        return self.get_face_single(
+            "loc_{}_face_eye_guide_".format(side)
+        )
+
+    def get_face_eyeup(self, side="lf"):
+        u"""眼球 up 参考定位器。"""
+
+        return self.get_face_single(
+            "loc_{}_face_eyeup_guide_".format(side)
+        )
+
+    def get_face_brow(self, side="lf"):
+        u"""一侧眉毛的形变关节定位器。"""
+
+        return self.get_face_series("loc_{}_brow_bind_".format(side))
+
+    def get_face_brow_curve(self, side="lf", kind="crv"):
+        u"""眉毛驱动 / 目标曲线的 CV 定位器。
+
+        Args:
+            side (str): lf / rt。
+            kind (str): crv（驱动）或 aim（目标）。
+        """
+
+        return self.get_face_series(
+            "loc_{}_brow_{}_".format(side, kind)
+        )
+
+    def get_face_lid_curve(self, side="lf", which="up"):
+        u"""眼皮驱动曲线的 CV 定位器。
+
+        Args:
+            side (str): lf / rt。
+            which (str): up（上眼皮）或 low（下眼皮）。
+        """
+
+        return self.get_face_series(
+            "loc_{}_lid{}_crv_".format(side, which)
+        )
