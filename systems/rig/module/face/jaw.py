@@ -77,9 +77,9 @@ class Jaw(FaceModule):
 
         super().get_guides()
 
-        if len(self.guide_list) != 3:
+        if len(self.guide_list) not in (2, 3):
             raise RuntimeError(
-                u"下巴需要 3 个 Guide（面部根 / 下颌枢轴 / 下巴尖），"
+                u"下巴需要 2 或 3 个 Guide（面部根 / 下颌枢轴 [/ 下巴尖]），"
                 u"收到 {} 个".format(len(self.guide_list))
             )
 
@@ -142,11 +142,16 @@ class Jaw(FaceModule):
             target=self.guide_list[1],
             parent=self.root_joint.name
         )
-        self.tip_joint = Jnt.create_jnt(
-            self.tip_name,
-            target=self.guide_list[2],
-            parent=self.jaw_joint.name
-        )
+        # 第三个 Guide（下巴尖）是可选的：
+        # 只想要一个下颌枢轴时传 2 个 Guide，避免多出一根长骨。
+        self.tip_joint = None
+
+        if len(self.guide_list) == 3:
+            self.tip_joint = Jnt.create_jnt(
+                self.tip_name,
+                target=self.guide_list[2],
+                parent=self.jaw_joint.name
+            )
 
     def create_ctrls(self):
         u"""下巴控制器：圆形，位移旋转都开放。"""
