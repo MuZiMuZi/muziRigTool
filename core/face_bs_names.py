@@ -31,19 +31,30 @@ MOUTH = (
 
 LIP = ("lipRollOut", "lipRollIn", "lipPount", "lipPountLeft")
 
-# 融合修型：名字 → 需要叠加的基础目标体
+# 融合修型：**单独雕目标体**，不靠基础形状叠权重。
+# 这里记的是「由哪些基础控制驱动它的权重」，只作为连线参考。
+COMBINED = (
+    "eyeExpand", "eyeCrush",
+)
+
 COMBOS = {
     "eyeExpand": ("browUp", "eyeUpWide", "eyeDownWide"),
     "eyeCrush": ("browDown", "sneer", "squint", "eyeUpClose"),
 }
 
-ALL = BROW + EYE + NOSE + CHEEK + MOUTH + LIP
+ALL = BROW + EYE + NOSE + CHEEK + MOUTH + LIP + COMBINED
 
 
 def all_targets():
-    u"""返回全部基础目标体名字（不含融合）。"""
+    u"""返回全部目标体名字（含融合修型）。"""
 
     return list(ALL)
+
+
+def all_combined():
+    u"""返回融合修型的名字。"""
+
+    return list(COMBINED)
 
 
 def combo_members(name):

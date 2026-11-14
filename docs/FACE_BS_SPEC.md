@@ -68,9 +68,12 @@ projection 改 **vertex normal**，勾 **reverse**；移动球体调整形状。
 
 ---
 
-## 二、融合修型（叠权重，不单独雕）
+## 二、融合修型（单独目标体）
 
-| 名字 | 公式 | 意图 |
+这两个要**单独雕目标体**（形状比叠权重好控制），
+权重由括号里的基础控制同时拉起时驱动；公式只作连线参考。
+
+| 名字 | 驱动来源 | 意图 |
 |---|---|---|
 | `eyeExpand` | `browUp + eyeUpWide + eyeDownWide` | 惊讶/吃惊：瞳孔放大、眉毛上挑 |
 | `eyeCrush` | `browDown + sneer + squint + eyeUpClose` | 眯眼/皱眉 |
@@ -81,5 +84,5 @@ projection 改 **vertex normal**，勾 **reverse**；移动球体调整形状。
 
 - 目标体命名：`bs_<part>_<name>_001`，例如 `bs_lf_brow_browUp_001`。
 - 驱动：只由**表情面板 / 次级控制器**驱动（driven key），不接关节旋转的 pose driver。
-- 融合修型不建独立目标体，按公式把基础权重相加；多路相加要 `clamp 0-1`。
+- 融合修型**有独立目标体**；它的权重由公式里的基础控制一起拉起来（相加后 clamp 0-1）。
 - 左右共用：同一目标体，左右两侧走各自控制器的权重。
