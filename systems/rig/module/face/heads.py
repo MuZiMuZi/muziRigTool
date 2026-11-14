@@ -165,7 +165,7 @@ def build_heads(head_mesh, side="md", layers="two_bs"):
     return names
 
 
-def build_pin_head(stretch, side="md", follow="stretch"):
+def build_pin_head(stretch, side="md", follow="squash"):
     u"""复制 stretch 头当 uvPin 的参考面。
 
     两种跟法：
@@ -205,7 +205,9 @@ def build_pin_head(stretch, side="md", follow="stretch"):
         bs_name = cmds.blendShape(stretch, pin, name=bs_name)[0]
         cmds.setAttr("{}.weight[0]".format(bs_name), 1.0)
     else:
+        # 只跟挤压拉伸：复制 stretches 的蒙皮权重
         bs_name = ""
+        copy_skin_weights(stretch, pin)
 
     cmds.setAttr(pin + ".visibility", 0)
 
@@ -213,6 +215,61 @@ def build_pin_head(stretch, side="md", follow="stretch"):
         "pin": pin,
         "blendshape": bs_name,
     }
+
+
+def copy_skin_weights(source, target):
+    u"""把 source 的蒙皮权重复制到 target（影响一致、最近点映射）。
+
+    Returns:
+        str: 目标 skinCluster 名；没有源蒙皮时返回空字符串。
+    """
+
+    def skin_of(node):
+        u"""从 transform 找到它 shape 上的 skinCluster。"""
+
+        for shape in cmds.listRelatives(node, shapes=True) or []:
+            skins = cmds.listConnections(shape, type="skinCluster") or []
+
+            if skins:
+                return skins[0]
+
+        return ""
+
+    source_skin = skin_of(source)
+
+    if not source_skin:
+        return ""
+
+    influence = cmds.skinCluster(
+        source_skin, query=True, influence=True
+    ) or []
+
+    if not influence:
+        return ""
+
+    target_shapes = cmds.listRelatives(target, shapes=True) or []
+
+    if not target_shapes:
+        return ""
+
+    destination = skin_of(target)
+
+    if not destination:
+        destination = cmds.skinCluster(
+            influence, target_shapes[0],
+            toSelectedBones=True,
+            name="skin_{}".format(target.replace("mesh_", ""))
+        )[0]
+
+    cmds.copySkinWeights(
+        sourceSkin=source_skin,
+        destinationSkin=destination,
+        noMirror=True,
+        surfaceAssociation="closestPoint",
+        influenceAssociation="oneToOne",
+    )
+
+    return destination
 
 
 def delete_heads(side="md"):
