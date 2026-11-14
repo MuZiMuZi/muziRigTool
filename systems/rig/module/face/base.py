@@ -46,7 +46,7 @@ class FaceModule(RigModule):
 
     def __init__(self, module, side="md", guides=None,
                  jnt_parent=None, ctrl_parent=None):
-        super(FaceModule, self).__init__(
+        super().__init__(
             module=module,
             side=side,
             guides=guides,

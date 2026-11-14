@@ -37,7 +37,7 @@ class Eye(FaceModule):
 
     def __init__(self, side="lf", guides=None, size=1.2, color=6,
                  shape="sphere", forward=6.0, **kwargs):
-        super(Eye, self).__init__(
+        super().__init__(
             module="eye",
             side=side,
             guides=guides,
@@ -68,7 +68,7 @@ class Eye(FaceModule):
     def get_guides(self):
         u"""读取 Guide：眼球中心 / up 参考点。"""
 
-        super(Eye, self).get_guides()
+        super().get_guides()
 
         if len(self.guide_list) != 2:
             raise RuntimeError(
@@ -158,7 +158,7 @@ class Eye(FaceModule):
     def setup_hierarchy(self):
         u"""关节挂 jnt 组，控制器和 up 定位器挂 ctrl 组。"""
 
-        super(Eye, self).setup_hierarchy()
+        super().setup_hierarchy()
 
         cmds.parent(self.joint.name, self.jnt_master_grp, absolute=True)
 
@@ -216,7 +216,7 @@ class Eye(FaceModule):
         if self.up_locator and cmds.objExists(self.up_locator):
             cmds.delete(self.up_locator)
 
-        delete_nodes = super(Eye, self).delete_rig()
+        delete_nodes = super().delete_rig()
 
         self.joint = None
         self.ctrl = None

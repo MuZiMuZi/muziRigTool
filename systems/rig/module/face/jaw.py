@@ -45,7 +45,7 @@ class Jaw(FaceModule):
 
     def __init__(self, side="md", guides=None, size=2.0, color=17,
                  drop_y=0.03, drop_z=-0.04, **kwargs):
-        super(Jaw, self).__init__(
+        super().__init__(
             module="jaw",
             side=side,
             guides=guides,
@@ -74,7 +74,7 @@ class Jaw(FaceModule):
     def get_guides(self):
         u"""读取 Guide：根（静态权重）/ 下巴枢轴。"""
 
-        super(Jaw, self).get_guides()
+        super().get_guides()
 
         if len(self.guide_list) != 2:
             raise RuntimeError(
@@ -156,7 +156,7 @@ class Jaw(FaceModule):
     def setup_hierarchy(self):
         u"""根关节挂 jnt 组，控制器 zero 组挂 ctrl 组。"""
 
-        super(Jaw, self).setup_hierarchy()
+        super().setup_hierarchy()
 
         # 根关节挂 jnt 组；下巴关节在 create_joints 里已经是根关节的子级，
         # 这里不要再 parent 一次（Maya 会报 already a child）。
@@ -259,7 +259,7 @@ class Jaw(FaceModule):
             if cmds.objExists(node):
                 cmds.delete(node)
 
-        delete_nodes = super(Jaw, self).delete_rig()
+        delete_nodes = super().delete_rig()
 
         self.root_joint = None
         self.jaw_joint = None
