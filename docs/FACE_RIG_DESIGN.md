@@ -452,7 +452,8 @@ grp_md_face_guide_001
 
 ### 步骤 3 · 基础控制器权重 + 两层头
 
-**将头部模型复制两份：`tweak` 头与 `stretch` 头。**
+**默认两层头：`tweak` 头 + `stretch` 头**（省一张整网格）。
+表情 / 修型 BS 直接挂在 stretch 头上；需要中间结果时再传 `layers="three"` 建修型头。
 
 ```text
 tweak 头  ← 全部基础控制器（关节 / 次级控制器）驱动
