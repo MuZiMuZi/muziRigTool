@@ -32,6 +32,9 @@ from .base import FaceModule
 class Eye(FaceModule):
     u"""单只眼球：关节 + 控制器 + 追踪约束。"""
 
+    # 眼球定位器没有曲线，真实位置就是 translation
+    use_pivot_guides = False
+
     def __init__(self, side="lf", guides=None, size=8.0, color=6,
                  shape="arrow_1_thinbev", constraints=True, **kwargs):
         super().__init__(

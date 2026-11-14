@@ -1,29 +1,28 @@
 # coding=utf-8
-u"""面部绑定手动测试（Maya 脚本编辑器 / mayapy 都能跑）。
+u"""面部绑定手动测试（Maya Script Editor / mayapy 都能跑）。
 
 用法（Maya Script Editor，Python）：
 
     exec(open(r"C:\\Users\\X\\Documents\\maya\\scripts\\muziRigTool\\tests\\face_manual_test.py", encoding="utf-8").read())
 
-它会：
+流程：
 
-    1. 重载 guide / base / jaw / eye 四个模块
+    1. 重载 guide / base / jaw / eye
     2. 导入 face_guide.ma
     3. 建下巴（下颌枢轴 + 下巴尖）
-    4. 建左右眼球
-    5. 打印「关节 / 控制器 vs 模板定位器」的坐标与偏差
-    6. 转下巴控制器，检查 connect 组位移和关节跟随
+    4. 建左右眼球（箭头控制器）
+    5. 打印「关节 / 控制器 vs 模板定位器」坐标与偏差
+    6. 转下巴控制器，检查系数位移与关节跟随
     7. 拖眼球控制器，检查视线角度
-    8. 打印 PASS / FAIL 汇总，并提示怎么删掉
+    8. 汇总并通过/失败
 
-不会清场景、不会删你已有的东西；要清理调用 cleanup()。
+不会清场景；要清理在同一个编辑器里调用 cleanup()。
+把 BUILD_CONSTRAINTS 改成 False，可以只建关节和控制器、不挂约束。
 """
 
 import importlib
 import math
-import os
 import sys
-
 
 SCRIPTS_DIR = r"C:\Users\X\Documents\maya\scripts"
 
@@ -33,8 +32,12 @@ if SCRIPTS_DIR not in sys.path:
 from maya import cmds  # noqa: E402
 
 
+# 先只建结构、不挂约束时改成 False
+BUILD_CONSTRAINTS = True
+
+
 # ----------------------------------------------------------------------
-# 工具
+# 基础工具
 # ----------------------------------------------------------------------
 
 def reload_modules():
@@ -48,25 +51,27 @@ def reload_modules():
     for module in (guide_mod, base_mod, jaw_mod, eye_mod):
         importlib.reload(module)
 
-    print(u"[重载] guide / base / jaw / eye 完成")
+    print(u"[重载] guide / base / jaw / eye")
+
+
+def guide_position(node, use_pivot=True):
+    u"""定位器的真实位置：下颌用 pivot，眼球用 translation。"""
+
+    space = "rotatePivot" if use_pivot else "translation"
+
+    if space == "rotatePivot":
+        return cmds.xform(node, query=True, worldSpace=True, rotatePivot=True)
+
+    return cmds.xform(node, query=True, worldSpace=True, translation=True)
 
 
 def world_position(node):
-    u"""世界坐标；节点不存在时返回 None。"""
+    u"""节点的世界位置。"""
 
     if not cmds.objExists(node):
         return None
 
     return cmds.xform(node, query=True, worldSpace=True, translation=True)
-
-
-def guide_position(node):
-    u"""模板定位器的视觉位置（世界 rotate pivot）。"""
-
-    if not cmds.objExists(node):
-        return None
-
-    return cmds.xform(node, query=True, worldSpace=True, rotatePivot=True)
 
 
 def distance(first, second):
@@ -79,7 +84,7 @@ def distance(first, second):
 
 
 def joint_axis(joint, index):
-    u"""关节世界矩阵的某一根轴。"""
+    u"""关节世界矩阵的某根轴。"""
 
     matrix = cmds.xform(joint, query=True, worldSpace=True, matrix=True)
 
@@ -96,37 +101,27 @@ def vector_angle(first, second):
     if length < 1e-9 or other < 1e-9:
         return 180.0
 
-    cosine = max(-1.0, min(1.0, dot / (length * other)))
-
-    return math.degrees(math.acos(cosine))
+    return math.degrees(math.acos(max(-1.0, min(1.0, dot / (length * other)))))
 
 
-def report_position(label, node, reference=None):
-    u"""打印节点坐标，并和参考点比较。"""
+def report(label, node, reference, results, use_pivot=True):
+    u"""打印节点位置并和模板定位器比较。"""
 
     position = world_position(node)
 
     if position is None:
-        print(u"  [缺失] {}".format(node))
-        return False
+        print(u"  ❌ {} 不存在".format(node))
+        results.append(False)
+        return
 
-    text = u"  {:<26} ({:>10.2f}, {:>10.2f}, {:>10.2f})".format(
-        node, position[0], position[1], position[2]
-    )
+    target = guide_position(reference, use_pivot)
+    offset = distance(position, target)
 
-    if reference is not None:
-        offset = distance(position, guide_position(reference))
-        text += u"   偏差 {:.4f}  （参考 {}）".format(offset, reference)
+    mark = u"✅" if offset < 1e-3 else u"❌"
+    print(u"  {:<24} ({:>9.2f}, {:>9.2f}, {:>9.2f})  偏差 {:.4f} {}"
+          .format(node, position[0], position[1], position[2], offset, mark))
 
-        if offset > 1e-3:
-            print(text + u"  ❌")
-            return False
-
-        print(text + u"  ✅")
-        return True
-
-    print(text)
-    return True
+    results.append(offset < 1e-3)
 
 
 # ----------------------------------------------------------------------
@@ -134,14 +129,15 @@ def report_position(label, node, reference=None):
 # ----------------------------------------------------------------------
 
 def build(g):
-    u"""建下巴 + 左右眼球，返回对象。"""
+    u"""建下巴 + 左右眼球。"""
 
     from muziRigTool.systems.rig.module.face.jaw import Jaw
     from muziRigTool.systems.rig.module.face.eye import Eye
 
     jaw = Jaw(
         side="md",
-        guides=[g.get_face_jaw(), g.get_face_jaw_end()]
+        guides=[g.get_face_jaw(), g.get_face_jaw_end()],
+        constraints=BUILD_CONSTRAINTS,
     )
     jaw.delete_rig()
     jaw.build_rig()
@@ -152,7 +148,8 @@ def build(g):
     for side in ("lf", "rt"):
         eye = Eye(
             side=side,
-            guides=[g.get_face_eye(side), g.get_face_eye_aim(side)]
+            guides=[g.get_face_eye(side), g.get_face_eye_aim(side)],
+            constraints=BUILD_CONSTRAINTS,
         )
         eye.delete_rig()
         eye.build_rig()
@@ -166,21 +163,31 @@ def build(g):
 # 检查
 # ----------------------------------------------------------------------
 
-def check_jaw_positions(results):
-    u"""下巴关节 / 控制器必须和模板定位器重合。"""
+def check_positions(results):
+    u"""所有结构节点必须压在模板定位器的 pivot 上。"""
 
-    print(u"\n[1] 下巴位置")
+    print(u"\n[1] 位置对比（关节 / 控制器 vs 模板 pivot）")
 
     pairs = (
         ("jnt_md_jaw_bind_001", "loc_md_jaw_start_bind_001"),
         ("jnt_md_jaw_tip_001", "loc_md_jaw_end_bind_001"),
         ("ctrl_md_jaw_main_001", "loc_md_jaw_start_bind_001"),
-        ("zero_md_jaw_driver_001", "loc_md_jaw_start_bind_001"),
-        ("loc_md_jaw_driven_001", "loc_md_jaw_start_bind_001"),
+        ("loc_md_jaw_driver_001", "loc_md_jaw_start_bind_001"),
     )
 
     for node, reference in pairs:
-        results.append(report_position("jaw", node, reference))
+        report("pos", node, reference, results)
+
+    eye_pairs = (
+        ("jnt_lf_eye_bind_001", "loc_lf_eye_ball_001"),
+        ("ctrl_lf_eye_main_001", "loc_lf_eye_ball_001"),
+        ("loc_lf_eye_gaze_001", "loc_lf_eye_aim_001"),
+        ("jnt_rt_eye_bind_001", "loc_rt_eye_ball_001"),
+        ("ctrl_rt_eye_main_001", "loc_rt_eye_ball_001"),
+    )
+
+    for node, reference in eye_pairs:
+        report("pos", node, reference, results, use_pivot=False)
 
 
 def check_jaw_motion(results):
@@ -189,7 +196,7 @@ def check_jaw_motion(results):
     print(u"\n[2] 下巴旋转驱动")
 
     if not cmds.objExists("ctrl_md_jaw_main_001"):
-        print(u"  [跳过] 控制器不存在")
+        print(u"  ❌ 控制器不存在")
         results.append(False)
         return
 
@@ -198,109 +205,102 @@ def check_jaw_motion(results):
 
     translate_y = cmds.getAttr("connect_md_jaw_main_001.translateY")
     translate_z = cmds.getAttr("connect_md_jaw_main_001.translateZ")
-
     after = world_position("jnt_md_jaw_bind_001")
 
-    good_y = abs(translate_y - (-20.0 * 0.03)) < 1e-4
-    good_z = abs(translate_z - (-20.0 * -0.04)) < 1e-4
-    moved = distance(before, after) > 1e-3
+    good = (
+        abs(translate_y - (-20.0 * 0.03)) < 1e-4
+        and abs(translate_z - (-20.0 * -0.04)) < 1e-4
+        and distance(before, after) > 1e-3
+    )
 
-    print(u"  connect.translateY = {:.4f}  期望 -0.6000  {}".format(
-        translate_y, u"✅" if good_y else u"❌"))
-    print(u"  connect.translateZ = {:.4f}  期望  0.8000  {}".format(
-        translate_z, u"✅" if good_z else u"❌"))
+    print(u"  connect.translateY = {:+.4f}（期望 -0.6）".format(translate_y))
+    print(u"  connect.translateZ = {:+.4f}（期望 +0.8）".format(translate_z))
     print(u"  下颌关节位移 = {:.4f}  {}".format(
-        distance(before, after), u"✅" if moved else u"❌"))
+        distance(before, after), u"✅" if good else u"❌"))
 
     cmds.setAttr("ctrl_md_jaw_main_001.rotateX", 0.0)
-    results.extend([good_y, good_z, moved])
+    results.append(good)
 
 
-def check_eyes(results):
-    u"""眼球：位置 + 视线跟随。"""
+def check_eye_motion(results):
+    u"""拖眼球控制器，检查视线角度。"""
 
-    print(u"\n[3] 眼球位置与视线")
+    print(u"\n[3] 眼球视线")
 
     for side in ("lf", "rt"):
         joint = "jnt_{}_eye_bind_001".format(side)
-        ball = "loc_{}_eye_ball_001".format(side)
         ctrl = "ctrl_{}_eye_main_001".format(side)
         gaze = "loc_{}_eye_gaze_001".format(side)
 
-        results.append(report_position(side, joint, ball))
-        results.append(report_position(side, ctrl, ball))
-
         if not (cmds.objExists(joint) and cmds.objExists(gaze)):
+            print(u"  ❌ {} 眼球节点缺失".format(side))
             results.append(False)
             continue
 
         joint_position = world_position(joint)
-        gaze_position = world_position(gaze)
-        direction = [
-            gaze_position[index] - joint_position[index]
-            for index in range(3)
-        ]
-        angle = vector_angle(joint_axis(joint, 0), direction)
-        print(u"  {} 初始视线偏差 {:.3f}°  {}".format(
-            side, angle, u"✅" if angle < 1.0 else u"❌"))
-        results.append(angle < 1.0)
+        original = world_position(ctrl)
 
-        # 控制器上移，眼球应该跟着抬头
-        ctrl_position = world_position(ctrl)
+        def angle_to_gaze():
+            target = world_position(gaze)
+            direction = [
+                target[index] - joint_position[index]
+                for index in range(3)
+            ]
+            return vector_angle(joint_axis(joint, 0), direction)
+
+        first = angle_to_gaze()
+
         cmds.xform(
             ctrl, worldSpace=True,
             translation=[
-                ctrl_position[0],
-                ctrl_position[1] + 50.0,
-                ctrl_position[2],
+                original[0],
+                original[1] + 50.0,
+                original[2],
             ]
         )
 
-        gaze_position = world_position(gaze)
-        direction = [
-            gaze_position[index] - joint_position[index]
-            for index in range(3)
-        ]
-        angle = vector_angle(joint_axis(joint, 0), direction)
-        print(u"  {} 控制器上移后视线偏差 {:.3f}°  {}".format(
-            side, angle, u"✅" if angle < 1.0 else u"❌"))
-        results.append(angle < 1.0)
+        second = angle_to_gaze()
 
-        cmds.xform(ctrl, worldSpace=True, translation=ctrl_position)
+        cmds.xform(ctrl, worldSpace=True, translation=original)
+
+        good = first < 1.0 and second < 1.0
+
+        print(u"  {} 初始 {:.3f}° / 上移后 {:.3f}°  {}".format(
+            side, first, second, u"✅" if good else u"❌"))
+
+        results.append(good)
 
 
 # ----------------------------------------------------------------------
-# 入口
+# 清理 / 入口
 # ----------------------------------------------------------------------
 
 def cleanup():
     u"""删掉测试建的下巴和眼球。"""
 
+    from muziRigTool.systems.rig.guide import Guide
     from muziRigTool.systems.rig.module.face.jaw import Jaw
     from muziRigTool.systems.rig.module.face.eye import Eye
-    from muziRigTool.systems.rig.guide import Guide
 
     g = Guide("face")
 
-    jaw = Jaw(side="md", guides=[g.get_face_jaw(), g.get_face_jaw_end()])
-    jaw.delete_rig()
+    Jaw(side="md", guides=[g.get_face_jaw(), g.get_face_jaw_end()]).delete_rig()
 
     for side in ("lf", "rt"):
-        eye = Eye(
+        Eye(
             side=side,
             guides=[g.get_face_eye(side), g.get_face_eye_aim(side)]
-        )
-        eye.delete_rig()
+        ).delete_rig()
 
-    print(u"[清理] 已删除下巴 / 左右眼球")
+    print(u"[清理] 下巴 / 左右眼球已删除")
 
 
 def run():
-    u"""跑完整测试。"""
+    u"""跑完整测试，返回是否全部通过。"""
 
-    print(u"=" * 60)
+    print(u"=" * 62)
     print(u"面部绑定 M1 手动测试")
-    print(u"=" * 60)
+    print(u"=" * 62)
 
     reload_modules()
 
@@ -311,26 +311,26 @@ def run():
     print(u"[模板] face_guide.ma 已导入")
 
     build(g)
-    print(u"[构建] 下巴 + 左右眼球完成")
+    print(u"[构建] 下巴 + 左右眼球（约束={}）".format(BUILD_CONSTRAINTS))
 
     results = []
-    check_jaw_positions(results)
+    check_positions(results)
     check_jaw_motion(results)
-    check_eyes(results)
+    check_eye_motion(results)
 
     passed = sum(1 for item in results if item)
     total = len(results)
 
-    print(u"\n" + u"=" * 60)
+    print(u"\n" + u"=" * 62)
     print(u"结果：{}/{} 通过".format(passed, total))
 
     if passed == total:
         print(u"全部通过 ✅")
     else:
-        print(u"有失败项 ❌ —— 把上面的输出发我")
+        print(u"有失败项 ❌ —— 把带 ❌ 的行发我")
 
-    print(u"要清理：在同一个脚本编辑器里直接调用 cleanup()")
-    print(u"=" * 60)
+    print(u"要清理：在同一个编辑器里直接调用 cleanup()")
+    print(u"=" * 62)
 
     return passed == total
 

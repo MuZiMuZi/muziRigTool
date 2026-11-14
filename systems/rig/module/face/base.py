@@ -61,21 +61,24 @@ class FaceModule(RigModule):
     # 对齐
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def guide_position(node):
-        u"""定位器的「视觉位置」：世界 rotate pivot。
+    # 定位器的「真实位置」按部位不同：
+    #   下颌 / 眉毛 / 眼皮 / 嘴唇：真实位置在 rotatePivot（曲线画在 pivot 上）
+    #   眼球：真实位置就是 translation（没有曲线，图标也在 translation）
+    use_pivot_guides = True
 
-        这套模板的定位器把真实位置放在 pivot 上：
-        translation 和可视点（曲线 / 十字）差了 100 多单位，
-        直接读 translation 会让关节全部错位。
-        """
+    def guide_position(self, node):
+        u"""返回定位器在本模块里该用的世界位置。"""
+
+        if self.use_pivot_guides:
+            return cmds.xform(
+                node, query=True, worldSpace=True, rotatePivot=True
+            )
 
         return cmds.xform(
-            node, query=True, worldSpace=True, rotatePivot=True
+            node, query=True, worldSpace=True, translation=True
         )
 
-    @staticmethod
-    def snap_to(source, target, rotation=False):
+    def snap_to(self, source, target, rotation=False):
         u"""把 target 吸附到 source 的世界位置（可带旋转）。
 
         建完关节 / 控制器、挂好层级之后再调一次，
@@ -91,7 +94,7 @@ class FaceModule(RigModule):
         cmds.xform(
             target,
             worldSpace=True,
-            translation=FaceModule.guide_position(source)
+            translation=self.guide_position(source)
         )
 
         if rotation:
@@ -103,8 +106,8 @@ class FaceModule(RigModule):
                 )
             )
 
-    @staticmethod
-    def copy_world_transform(source, target, position=True, rotation=True):
+    def copy_world_transform(self, source, target, position=True,
+                             rotation=True):
         u"""复制世界位置 / 旋转。
 
         不能用 cmds.matchTransform：模板定位器带 rotatePivot 偏移，
@@ -122,7 +125,7 @@ class FaceModule(RigModule):
             cmds.xform(
                 target,
                 worldSpace=True,
-                translation=FaceModule.guide_position(source)
+                translation=self.guide_position(source)
             )
 
         if rotation:

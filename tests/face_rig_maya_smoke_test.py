@@ -188,7 +188,7 @@ def check_jaw(guide):
         u"未传 root_guide 时不该自己造面部根关节"
     )
 
-    # 关节必须严格等于模板定位器位置
+    # 下颌关节必须严格等于模板定位器的 pivot 位置
     for joint, locator in (
         ("jnt_md_jaw_bind_001", "loc_md_jaw_start_bind_001"),
         ("jnt_md_jaw_tip_001", "loc_md_jaw_end_bind_001"),
@@ -293,7 +293,11 @@ def check_eye(guide):
             u"眼球控制器缺少属性：{}".format(attribute)
         )
 
+    eye_guide = world_position("loc_lf_eye_ball_001")
     joint = world_position("jnt_lf_eye_bind_001")
+    offset = distance(eye_guide, joint)
+    check(offset < 1e-4, u"眼球关节没有对齐眼球定位器：{}".format(offset))
+
     gaze = world_position("loc_lf_eye_gaze_001")
     direction = [gaze[index] - joint[index] for index in range(3)]
 
