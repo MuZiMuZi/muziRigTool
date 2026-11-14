@@ -139,12 +139,12 @@ class Jaw(FaceModule):
         )
 
     def create_ctrls(self):
-        u"""下巴控制器：方块形状，位移旋转都开放。"""
+        u"""下巴控制器：圆形，位移旋转都开放。"""
 
         self.ctrl = self.create_face_ctrl(
             self.ctrl_name,
             target=self.guide_list[1],
-            shape="cube",
+            shape="circle",
             color=self.color,
             size=self.size
         )

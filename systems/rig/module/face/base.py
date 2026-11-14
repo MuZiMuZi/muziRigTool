@@ -153,11 +153,13 @@ class FaceModule(RigModule):
             "transform", name=driven.replace("loc_", "zero_", 1)
         )
 
-        # 两个 zero 组先对齐到控制器，保证初始偏移为零
-        cmds.matchTransform(
-            zero_driver, zero_driven, ctrl.name,
-            position=True, rotation=True
-        )
+        # 两个 zero 组各自对齐到控制器，保证初始偏移为零。
+        # 注意：不能写成 matchTransform(zero_driver, zero_driven, ctrl)——
+        # Maya 只把第一个对象对齐到最后一个源，第二个会留在原点。
+        for zero in (zero_driver, zero_driven):
+            cmds.matchTransform(
+                zero, ctrl.name, position=True, rotation=True
+            )
 
         loc_driver = cmds.spaceLocator(name=driver)[0]
         loc_driven = cmds.spaceLocator(name=driven)[0]

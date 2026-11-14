@@ -134,6 +134,20 @@ def check_jaw(guide):
     ):
         check(cmds.objExists(node), u"下巴缺少节点：{}".format(node))
 
+    # 两个 zero 组必须和控制器同位置（曾经把 driven 留在原点）
+    ctrl_position = world_position("ctrl_md_jaw_main_001")
+
+    for zero in ("zero_md_jaw_driver_001", "zero_md_jaw_driven_001"):
+        zero_position = world_position(zero)
+        distance = max(
+            abs(zero_position[index] - ctrl_position[index])
+            for index in range(3)
+        )
+        check(
+            distance < 1e-4,
+            u"{} 没有对齐控制器，偏差 {}".format(zero, distance)
+        )
+
     # 控制器 → connect 组的系数
     cmds.setAttr("ctrl_md_jaw_main_001.rotateX", -20.0)
 
