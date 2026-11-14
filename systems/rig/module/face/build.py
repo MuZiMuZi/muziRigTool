@@ -41,12 +41,14 @@ class FaceBuild(object):
     u"""一次把面部基础结构建起来。"""
 
     def __init__(self, config, side="lf", build_brows=True,
-                 build_eyes=True, build_jaw=True, pin_brows=False):
+                 build_eyes=True, build_jaw=True, build_lids=True,
+                 pin_brows=False):
         self.config = validate_models(config)
         self.side = side
         self.build_brows = build_brows
         self.build_eyes = build_eyes
         self.build_jaw = build_jaw
+        self.build_lids = build_lids
         self.pin_brows = pin_brows
 
         self.locators = {}
@@ -54,6 +56,7 @@ class FaceBuild(object):
         self.pin = {}
         self.jaw = None
         self.eyes = {}
+        self.lids = {}
         self.brows = {}
 
     # ------------------------------------------------------------------
@@ -78,6 +81,10 @@ class FaceBuild(object):
             for side in ("lf", "rt"):
                 self.eyes[side] = self._build_eye(side)
 
+        if self.build_lids:
+            for side in ("lf", "rt"):
+                self.lids[side] = self._build_lid(side)
+
         if self.build_brows:
             for side in ("lf", "rt"):
                 self.brows[side] = self._build_brow(side)
@@ -88,6 +95,7 @@ class FaceBuild(object):
             "pin": self.pin,
             "jaw": self.jaw,
             "eyes": self.eyes,
+            "lids": self.lids,
             "brows": self.brows,
         }
 
@@ -115,6 +123,27 @@ class FaceBuild(object):
         eye.connect_rig()
 
         return eye
+
+    def _build_lid(self, side):
+        from .lid import Lid
+        from ...guide import Guide
+
+        guide = Guide("face")
+        data = self.locators[side]
+
+        lid = Lid(
+            side=side,
+            upper=data["lid_upper"],
+            lower=data["lid_lower"],
+            inner=guide.get_face_lid_corner(side, "inner"),
+            outer=guide.get_face_lid_corner(side, "outer"),
+            eye=data["eye"],
+        )
+        lid.delete_rig()
+        lid.build_rig()
+        lid.connect_rig()
+
+        return lid
 
     def _build_brow(self, side):
         from .brow import Brow
@@ -154,6 +183,9 @@ class FaceBuild(object):
         for brow in self.brows.values():
             brow.delete_rig()
 
+        for lid in self.lids.values():
+            lid.delete_rig()
+
         for eye in self.eyes.values():
             eye.delete_rig()
 
@@ -167,6 +199,7 @@ class FaceBuild(object):
 
         self.jaw = None
         self.eyes = {}
+        self.lids = {}
         self.brows = {}
         self.pin = {}
         self.heads = {}
