@@ -293,7 +293,7 @@ def check_eye(guide):
             u"眼球控制器缺少属性：{}".format(attribute)
         )
 
-    eye_guide = world_position("loc_lf_eye_ball_001")
+    eye_guide = guide_world("loc_lf_eye_ball_001")
     joint = world_position("jnt_lf_eye_bind_001")
     offset = distance(eye_guide, joint)
     check(offset < 1e-4, u"眼球关节没有对齐眼球定位器：{}".format(offset))

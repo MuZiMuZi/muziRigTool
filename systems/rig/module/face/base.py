@@ -66,17 +66,66 @@ class FaceModule(RigModule):
     #   眼球：真实位置就是 translation（没有曲线，图标也在 translation）
     use_pivot_guides = True
 
-    def guide_position(self, node):
-        u"""返回定位器在本模块里该用的世界位置。"""
+    @staticmethod
+    def _mirror_name(node):
+        u"""lf ↔ rt 名字互换；没有方向段时返回 None。"""
 
-        if self.use_pivot_guides:
+        short_name = node.split("|")[-1]
+
+        if "_lf_" in short_name:
+            return short_name.replace("_lf_", "_rt_", 1)
+
+        if "_rt_" in short_name:
+            return short_name.replace("_rt_", "_lf_", 1)
+
+        return None
+
+    def guide_position(self, node):
+        u"""返回定位器在本模块里该用的世界位置。
+
+        默认取 rotatePivot（这套模板把可视点画在 pivot 上）。
+        个别定位器的 pivot 漏了镜像（例如右侧眼球），
+        这时用对侧定位器的 pivot 偏移镜像补回来。
+        """
+
+        if not self.use_pivot_guides:
             return cmds.xform(
-                node, query=True, worldSpace=True, rotatePivot=True
+                node, query=True, worldSpace=True, translation=True
             )
 
-        return cmds.xform(
+        pivot = cmds.xform(
+            node, query=True, worldSpace=True, rotatePivot=True
+        )
+        translation = cmds.xform(
             node, query=True, worldSpace=True, translation=True
         )
+
+        offset = [pivot[i] - translation[i] for i in range(3)]
+
+        if max(abs(value) for value in offset) > 1e-4:
+            return pivot
+
+        mirror = self._mirror_name(node)
+
+        if mirror and cmds.objExists(mirror):
+            mirror_pivot = cmds.xform(
+                mirror, query=True, worldSpace=True, rotatePivot=True
+            )
+            mirror_translation = cmds.xform(
+                mirror, query=True, worldSpace=True, translation=True
+            )
+            mirror_offset = [
+                mirror_pivot[i] - mirror_translation[i] for i in range(3)
+            ]
+
+            if max(abs(value) for value in mirror_offset) > 1e-4:
+                return [
+                    translation[0] - mirror_offset[0],
+                    translation[1] + mirror_offset[1],
+                    translation[2] + mirror_offset[2],
+                ]
+
+        return translation
 
     def snap_to(self, source, target, rotation=False):
         u"""把 target 吸附到 source 的世界位置（可带旋转）。

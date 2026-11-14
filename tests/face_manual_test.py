@@ -55,14 +55,46 @@ def reload_modules():
 
 
 def guide_position(node, use_pivot=True):
-    u"""定位器的真实位置：下颌用 pivot，眼球用 translation。"""
+    u"""定位器的真实位置：默认 rotatePivot，pivot 缺失时按对侧镜像补。"""
 
-    space = "rotatePivot" if use_pivot else "translation"
+    translation = cmds.xform(node, query=True, worldSpace=True,
+                             translation=True)
 
-    if space == "rotatePivot":
-        return cmds.xform(node, query=True, worldSpace=True, rotatePivot=True)
+    if not use_pivot:
+        return translation
 
-    return cmds.xform(node, query=True, worldSpace=True, translation=True)
+    pivot = cmds.xform(node, query=True, worldSpace=True,
+                       rotatePivot=True)
+    offset = [pivot[i] - translation[i] for i in range(3)]
+
+    if max(abs(value) for value in offset) > 1e-4:
+        return pivot
+
+    short_name = node.split("|")[-1]
+    mirror = None
+
+    if "_lf_" in short_name:
+        mirror = short_name.replace("_lf_", "_rt_", 1)
+    elif "_rt_" in short_name:
+        mirror = short_name.replace("_rt_", "_lf_", 1)
+
+    if mirror and cmds.objExists(mirror):
+        mirror_pivot = cmds.xform(mirror, query=True, worldSpace=True,
+                                  rotatePivot=True)
+        mirror_translation = cmds.xform(mirror, query=True, worldSpace=True,
+                                        translation=True)
+        mirror_offset = [
+            mirror_pivot[i] - mirror_translation[i] for i in range(3)
+        ]
+
+        if max(abs(value) for value in mirror_offset) > 1e-4:
+            return [
+                translation[0] - mirror_offset[0],
+                translation[1] + mirror_offset[1],
+                translation[2] + mirror_offset[2],
+            ]
+
+    return translation
 
 
 def world_position(node):
@@ -187,7 +219,7 @@ def check_positions(results):
     )
 
     for node, reference in eye_pairs:
-        report("pos", node, reference, results, use_pivot=False)
+        report("pos", node, reference, results)
 
 
 def check_jaw_motion(results):
