@@ -31,39 +31,36 @@ MOUTH = (
 
 LIP = ("lipRollOut", "lipRollIn", "lipPount", "lipPountLeft")
 
-# 融合修型：**单独雕目标体**，不靠基础形状叠权重。
-# 这里记的是「由哪些基础控制驱动它的权重」，只作为连线参考。
-COMBINED = (
-    "eyeExpand", "eyeCrush",
-)
-
-COMBOS = {
+# 融合修型：主人给的两个只是**参考示例**，不强制实现。
+# 真正做的时候按项目需要另定组合；这里保留公式，方便连线时参考。
+COMBO_EXAMPLES = {
     "eyeExpand": ("browUp", "eyeUpWide", "eyeDownWide"),
     "eyeCrush": ("browDown", "sneer", "squint", "eyeUpClose"),
 }
 
-ALL = BROW + EYE + NOSE + CHEEK + MOUTH + LIP + COMBINED
+# 基础目标体（不含示例组合）
+ALL = BROW + EYE + NOSE + CHEEK + MOUTH + LIP
 
 
 def all_targets():
-    u"""返回全部目标体名字（含融合修型）。"""
+    u"""返回全部基础目标体名字。"""
 
     return list(ALL)
 
 
-def all_combined():
-    u"""返回融合修型的名字。"""
+def combo_examples():
+    u"""返回参考用的融合修型（名字 → 成员）。"""
 
-    return list(COMBINED)
+    return dict(COMBO_EXAMPLES)
 
 
 def combo_members(name):
-    u"""返回融合修型包含的基础目标体。"""
+    u"""返回示例融合修型包含的基础目标体。"""
 
     try:
-        return list(COMBOS[name])
+        return list(COMBO_EXAMPLES[name])
     except KeyError:
-        raise KeyError(u"没有这个融合修型：{}".format(name))
+        raise KeyError(u"没有这个融合示例：{}".format(name))
 
 
 def validate():
@@ -79,7 +76,7 @@ def validate():
     known = set(ALL)
     missing = []
 
-    for name, members in COMBOS.items():
+    for name, members in COMBO_EXAMPLES.items():
         for member in members:
             if member not in known:
                 missing.append("{} → {}".format(name, member))
@@ -94,7 +91,15 @@ def validate():
     return []
 
 
-def target_name(part, name, index=1):
-    u"""拼目标体节点名：bs_<part>_<name>_001。"""
+def target_name(side, part, function, index=1):
+    u"""按五段式拼目标体节点名：bs_<side>_<part>_<function>_001。
 
-    return "bs_{}_{}_{:03d}".format(part, name, index)
+    例：bs_lf_brow_browUp_001。
+    """
+
+    from .name_utils import Name
+
+    return Name(
+        type="bs", side=side, part=part,
+        function=function, index=index
+    ).name

@@ -48,15 +48,16 @@ class TargetListTests(unittest.TestCase):
         for wrong in ("borwDown", "borrowDown", "lipPountleft"):
             self.assertNotIn(wrong, face_bs_names.ALL)
 
-    def test_combined_targets(self):
-        u"""融合修型是独立目标体，也进总表。"""
+    def test_combo_examples_are_optional(self):
+        u"""eyeExpand / eyeCrush 只是示例，不算必做目标体。"""
 
         for name in ("eyeExpand", "eyeCrush"):
-            self.assertIn(name, face_bs_names.ALL)
+            self.assertNotIn(name, face_bs_names.ALL)
 
-        self.assertEqual(len(face_bs_names.all_targets()), 30)
+        self.assertEqual(len(face_bs_names.all_targets()), 28)
         self.assertEqual(
-            face_bs_names.all_combined(), ["eyeExpand", "eyeCrush"]
+            sorted(face_bs_names.combo_examples()),
+            ["eyeCrush", "eyeExpand"]
         )
 
     def test_combos_valid(self):
@@ -78,7 +79,7 @@ class TargetListTests(unittest.TestCase):
 
     def test_target_name(self):
         self.assertEqual(
-            face_bs_names.target_name("lf_brow", "browUp"),
+            face_bs_names.target_name("lf", "brow", "browUp"),
             "bs_lf_brow_browUp_001"
         )
 
