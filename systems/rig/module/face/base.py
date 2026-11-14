@@ -265,7 +265,7 @@ class FaceModule(RigModule):
     # ------------------------------------------------------------------
 
     def connect_ctrl_to_joint(self, ctrl, joint, name=None,
-                              parent_ctrl=None):
+                              parent_ctrl=None, use_matrix=False):
         u"""用 locator 对把控制器接到关节上。
 
         Args:
@@ -347,11 +347,31 @@ class FaceModule(RigModule):
                 force=True
             )
 
-        constraint = cmds.parentConstraint(
-            loc_driven, joint, maintainOffset=True, **(
-                {"name": name} if name else {}
+        constraint = None
+        matrix_node = None
+
+        if use_matrix:
+            # 用矩阵驱动代替约束：世界矩阵 → 父空间 → offsetParentMatrix
+            from .....core import matrix_utils
+
+            parent = cmds.listRelatives(joint, parent=True)
+            parent_name = parent[0] if parent else None
+
+            matrix_name = "{}_matrix".format(name) if name else None
+
+            matrix_utils.drive_offset_parent_matrix(
+                joint,
+                loc_driven + ".worldMatrix[0]",
+                parent=parent_name,
+                name=matrix_name
             )
-        )[0]
+            matrix_node = matrix_name
+        else:
+            constraint = cmds.parentConstraint(
+                loc_driven, joint, maintainOffset=True, **(
+                    {"name": name} if name else {}
+                )
+            )[0]
 
         # 上层控制器存在时，把本层 zero 组挂到上层 locator 下：
         # 动上层控制器 → 下层跟着动，且下层自己的偏移不丢。
@@ -379,11 +399,18 @@ class FaceModule(RigModule):
             "zero_driver": zero_driver,
             "zero_driven": zero_driven,
             "constraint": constraint,
+            "matrix": matrix_node,
         }
 
         self.connection_nodes.extend(
-            [loc_driver, loc_driven, zero_driver, zero_driven, constraint]
+            [loc_driver, loc_driven, zero_driver, zero_driven]
         )
+
+        if constraint:
+            self.connection_nodes.append(constraint)
+
+        if matrix_node:
+            self.connection_nodes.append(matrix_node)
 
         return record
 

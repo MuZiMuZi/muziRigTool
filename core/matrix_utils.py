@@ -68,6 +68,77 @@ def combine_matrices(matrix_plugs, weights=None, name=None):
     return node + ".matrixSum"
 
 
+def combine_with_offsets(joint, sources, weights, name="mix"):
+    u"""带偏移的矩阵混合（替代加权 parentConstraint）。
+
+    每路先算 offset = 源世界逆 × 关节世界，
+    再用「源世界 × offset」还原成关节位置，最后按权重混合。
+
+    Args:
+        joint (str): 目标关节。
+        sources (list): 源节点的输出组名（控制器 output）。
+        weights (list): 每路权重。
+        name (str): 节点名前缀。
+
+    Returns:
+        str: 混合后的矩阵插头。
+    """
+
+    from . import matrix_math
+
+    sources = list(sources)
+    weights = list(weights)
+
+    if len(sources) != len(weights):
+        raise ValueError(u"源与权重数量不一致")
+
+    joint_matrix = cmds.getAttr(joint + ".worldMatrix[0]")
+
+    mixed_inputs = []
+
+    for index, source in enumerate(sources):
+        inverse = cmds.getAttr(source + ".worldInverseMatrix[0]")
+        offset = matrix_math.multiply(inverse, joint_matrix)
+
+        offset_node = cmds.createNode(
+            "fourByFourMatrix",
+            name="{}_offset_{:02d}".format(name, index)
+        )
+
+        for row in range(4):
+            for column in range(4):
+                cmds.setAttr(
+                    "{}.in{}{}".format(offset_node, row, column),
+                    float(offset[row * 4 + column])
+                )
+
+        mult = cmds.createNode(
+            "multMatrix",
+            name="{}_src_{:02d}".format(name, index)
+        )
+        cmds.connectAttr(
+            source + ".worldMatrix[0]", mult + ".matrixIn[0]", force=True
+        )
+        cmds.connectAttr(
+            offset_node + ".output", mult + ".matrixIn[1]", force=True
+        )
+
+        mixed_inputs.append((mult + ".matrixSum", weights[index]))
+
+    node = cmds.createNode("wtAddMatrix", name=name + "_wt")
+
+    for index, (plug, weight) in enumerate(mixed_inputs):
+        cmds.connectAttr(
+            plug, "{}.wtMatrix[{}].matrixIn".format(node, index),
+            force=True
+        )
+        cmds.setAttr(
+            "{}.wtMatrix[{}].weightIn".format(node, index), float(weight)
+        )
+
+    return node + ".matrixSum"
+
+
 def drive_offset_parent_matrix(target, matrix_plug, parent=None,
                                name=None):
     u"""用矩阵驱动目标的 offsetParentMatrix。

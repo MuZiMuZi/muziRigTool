@@ -68,7 +68,7 @@ def _delete_old(names):
             cmds.delete(names[key])
 
 
-def build_heads(head_mesh, side="md", layers="two"):
+def build_heads(head_mesh, side="md", layers="two_bs"):
     u"""从头部模型复制出三层头并接好 blendshape。
 
     Args:
@@ -91,8 +91,12 @@ def build_heads(head_mesh, side="md", layers="two"):
     # 原始模型隐藏，只当源头
     cmds.setAttr(head_mesh + ".visibility", 0)
 
-    keys = ("tweak", "corrective", "stretch") if layers == "three" \
-        else ("tweak", "stretch")
+    if layers == "three":
+        keys = ("tweak", "corrective", "stretch")
+    elif layers == "two":
+        keys = ("tweak", "stretch")
+    else:                      # two_bs：两张头都喂给 stretch
+        keys = ("tweak", "corrective", "stretch")
 
     for key in keys:
         node = cmds.duplicate(head_mesh, name=names[key])[0]
@@ -101,7 +105,7 @@ def build_heads(head_mesh, side="md", layers="two"):
             cmds.parent(node, world=True)
 
     if layers == "three":
-        # tweak → 修型
+        # tweak → 修型 → stretch（链式）
         names["tweak_to_corrective"] = cmds.blendShape(
             names["tweak"], names["corrective"],
             name=names["tweak_to_corrective"]
@@ -110,20 +114,45 @@ def build_heads(head_mesh, side="md", layers="two"):
             "{}.weight[0]".format(names["tweak_to_corrective"]), 1.0
         )
 
-        source = names["corrective"]
-    else:
-        # 两层：表情 BS 直接挂 stretch，修型头不建
-        names["tweak_to_corrective"] = ""
-        source = names["tweak"]
+        names["corrective_to_stretch"] = cmds.blendShape(
+            names["corrective"], names["stretch"],
+            name=names["corrective_to_stretch"]
+        )[0]
+        cmds.setAttr(
+            "{}.weight[0]".format(names["corrective_to_stretch"]), 1.0
+        )
 
-    # 上游头 → stretch
-    names["corrective_to_stretch"] = cmds.blendShape(
-        source, names["stretch"],
-        name=names["corrective_to_stretch"]
-    )[0]
-    cmds.setAttr(
-        "{}.weight[0]".format(names["corrective_to_stretch"]), 1.0
-    )
+    elif layers == "two":
+        # 只有 tweak 喂 stretch
+        names["tweak_to_corrective"] = ""
+
+        names["corrective_to_stretch"] = cmds.blendShape(
+            names["tweak"], names["stretch"],
+            name=names["corrective_to_stretch"]
+        )[0]
+        cmds.setAttr(
+            "{}.weight[0]".format(names["corrective_to_stretch"]), 1.0
+        )
+
+    else:
+        # two_bs：一个 blendshape 节点、两个目标（tweak + 修型）。
+        # 两个目标都相对同一个 rest 网格，delta 相加：
+        #     rest + (tweak - rest) + (corrective - rest)
+        # 放在同一个节点里，求值顺序稳定，不会互相覆盖。
+        names["tweak_to_corrective"] = ""
+
+        names["corrective_to_stretch"] = cmds.blendShape(
+            names["tweak"], names["corrective"], names["stretch"],
+            name=names["corrective_to_stretch"]
+        )[0]
+
+        for index in (0, 1):
+            cmds.setAttr(
+                "{}.weight[{}]".format(
+                    names["corrective_to_stretch"], index
+                ),
+                1.0
+            )
 
     # 只显示 stretch
     cmds.setAttr(names["tweak"] + ".visibility", 0)

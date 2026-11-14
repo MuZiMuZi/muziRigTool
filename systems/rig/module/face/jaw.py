@@ -272,10 +272,11 @@ class Jaw(FaceModule):
         record = self.connect_ctrl_to_joint(
             self.ctrl,
             self.jaw_joint.name,
-            name=self.constraint_name
+            name=self.constraint_name,
+            use_matrix=True
         )
 
-        return record["constraint"]
+        return record["matrix"] or record["constraint"]
 
     # ------------------------------------------------------------------
     # 操作

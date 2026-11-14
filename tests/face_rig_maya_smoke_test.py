@@ -178,7 +178,7 @@ def check_jaw(guide):
         "ctrl_md_jaw_main_001",
         "mult_md_jaw_dropy_001",
         "mult_md_jaw_dropz_001",
-        "cons_md_jaw_main_001",
+        "cons_md_jaw_main_001_matrix",
         "loc_md_jaw_driver_001",
         "loc_md_jaw_driven_001",
     ):

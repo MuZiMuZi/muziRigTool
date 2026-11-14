@@ -249,23 +249,28 @@ class Brow(FaceModule):
             if cmds.objExists(constraint_name):
                 cmds.delete(constraint_name)
 
-            targets = [
+            from .....core import matrix_utils
+
+            sources = [
                 self.ctrls[region].get_output()
                 for region, _ in weights
             ]
+            matrix_weights = [weight for _, weight in weights]
 
-            constraint = cmds.parentConstraint(
-                *targets,
-                joint.name,
-                maintainOffset=True,
+            mixed = matrix_utils.combine_with_offsets(
+                joint.name, sources, matrix_weights,
                 name=constraint_name
-            )[0]
+            )
 
-            # 约束权重必须走 w0 / w1：
-            # target[i].targetWeight 默认已经连到 w 属性，直接写会被锁。
-            if len(weights) == 2:
-                cmds.setAttr(constraint + ".w0", weights[0][1])
-                cmds.setAttr(constraint + ".w1", weights[1][1])
+            parent = cmds.listRelatives(joint.name, parent=True)
+            parent_name = parent[0] if parent else None
+
+            matrix_utils.drive_offset_parent_matrix(
+                joint.name,
+                mixed,
+                parent=parent_name,
+                name=constraint_name + "_matrix"
+            )
 
         self.create_expression_panel()
         self.pin_controls_to_reference()
@@ -353,8 +358,14 @@ class Brow(FaceModule):
         self.pin_nodes = []
 
         for name in self.constraint_names:
-            if cmds.objExists(name):
-                cmds.delete(name)
+            for node in (
+                name + "_matrix", name + "_wt",
+                name + "_offset_00", name + "_offset_01",
+                name + "_src_00", name + "_src_01",
+                name,
+            ):
+                if cmds.objExists(node):
+                    cmds.delete(node)
 
         delete_nodes = super().delete_rig()
 
