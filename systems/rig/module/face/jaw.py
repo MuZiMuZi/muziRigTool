@@ -44,13 +44,16 @@ class Jaw(FaceModule):
     u"""下巴：关节 + 控制器 + 旋转补位移。"""
 
     def __init__(self, side="md", guides=None, size=2.0, color=17,
-                 drop_y=0.03, drop_z=-0.04, **kwargs):
+                 drop_y=0.03, drop_z=-0.04, root_guide=None, **kwargs):
         super().__init__(
             module="jaw",
             side=side,
             guides=guides,
             **kwargs
         )
+
+        # 可选的静态权重容器：给了才建根关节，不给就只有下颌 + 尖。
+        self.root_guide = root_guide
 
         self.size = size
         self.color = color
@@ -77,9 +80,9 @@ class Jaw(FaceModule):
 
         super().get_guides()
 
-        if len(self.guide_list) not in (2, 3):
+        if len(self.guide_list) != 2:
             raise RuntimeError(
-                u"下巴需要 2 或 3 个 Guide（面部根 / 下颌枢轴 [/ 下巴尖]），"
+                u"下巴需要 2 个 Guide（下颌枢轴 / 下巴尖），"
                 u"收到 {} 个".format(len(self.guide_list))
             )
 
@@ -128,37 +131,40 @@ class Jaw(FaceModule):
     # ------------------------------------------------------------------
 
     def create_joints(self):
-        u"""根关节 + 下巴关节。
+        u"""下颌关节 + 下巴尖关节，位置严格等于两个定位器。
 
-        根关节不参与形变，只当权重容器：
-        下巴权重刷 1 的地方之外，其余都归它。
+        不再自己造一个「面部根」关节：
+        多出来的关节会和模板控制点对不上，看起来就是一截乱跑的骨头。
+        需要静态权重容器时，传 root_guide 再建根关节。
         """
 
-        self.root_joint = Jnt.create_jnt(
-            self.root_name, target=self.guide_list[0]
-        )
+        self.root_joint = None
+
+        if self.root_guide:
+            self.root_joint = Jnt.create_jnt(
+                self.root_name, target=self.root_guide
+            )
+
+        parent = self.root_joint.name if self.root_joint else None
+
         self.jaw_joint = Jnt.create_jnt(
             self.joint_name,
-            target=self.guide_list[1],
-            parent=self.root_joint.name
+            target=self.guide_list[0],
+            parent=parent
         )
-        # 第三个 Guide（下巴尖）是可选的：
-        # 只想要一个下颌枢轴时传 2 个 Guide，避免多出一根长骨。
-        self.tip_joint = None
 
-        if len(self.guide_list) == 3:
-            self.tip_joint = Jnt.create_jnt(
-                self.tip_name,
-                target=self.guide_list[2],
-                parent=self.jaw_joint.name
-            )
+        self.tip_joint = Jnt.create_jnt(
+            self.tip_name,
+            target=self.guide_list[1],
+            parent=self.jaw_joint.name
+        )
 
     def create_ctrls(self):
         u"""下巴控制器：圆形，位移旋转都开放。"""
 
         self.ctrl = self.create_face_ctrl(
             self.ctrl_name,
-            target=self.guide_list[1],
+            target=self.guide_list[0],
             shape="circle",
             color=self.color,
             size=self.size
@@ -173,9 +179,15 @@ class Jaw(FaceModule):
 
         super().setup_hierarchy()
 
-        # 根关节挂 jnt 组；下巴关节在 create_joints 里已经是根关节的子级，
-        # 这里不要再 parent 一次（Maya 会报 already a child）。
-        cmds.parent(self.root_joint.name, self.jnt_master_grp, absolute=True)
+        # 有根关节时把根挂到 jnt 组；下颌已经是它的子级。
+        if self.root_joint:
+            cmds.parent(
+                self.root_joint.name, self.jnt_master_grp, absolute=True
+            )
+        else:
+            cmds.parent(
+                self.jaw_joint.name, self.jnt_master_grp, absolute=True
+            )
 
         zero_grp = self.ctrl_name.replace("ctrl_", "zero_", 1)
         cmds.parent(zero_grp, self.ctrl_master_grp, absolute=True)

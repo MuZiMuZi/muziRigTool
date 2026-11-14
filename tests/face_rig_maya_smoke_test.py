@@ -158,16 +158,16 @@ def check_jaw(guide):
     jaw = Jaw(
         side="md",
         guides=[
-            guide.get_face_move(),
             guide.get_face_jaw(),
+            guide.get_face_jaw_end(),
         ]
     )
     jaw.build_rig()
     jaw.connect_rig()
 
     for node in (
-        "jnt_md_face_root_001",
         "jnt_md_jaw_bind_001",
+        "jnt_md_jaw_tip_001",
         "ctrl_md_jaw_main_001",
         "mult_md_jaw_dropy_001",
         "mult_md_jaw_dropz_001",
@@ -178,9 +178,18 @@ def check_jaw(guide):
         check(cmds.objExists(node), u"下巴缺少节点：{}".format(node))
 
     check(
-        not cmds.objExists("jnt_md_jaw_tip_001"),
-        u"2 个 Guide 时不该创建下巴尖关节"
+        not cmds.objExists("jnt_md_face_root_001"),
+        u"未传 root_guide 时不该自己造面部根关节"
     )
+
+    # 关节必须严格等于模板定位器位置
+    for joint, locator in (
+        ("jnt_md_jaw_bind_001", "loc_md_jaw_start_bind_001"),
+        ("jnt_md_jaw_tip_001", "loc_md_jaw_end_bind_001"),
+        ("ctrl_md_jaw_main_001", "loc_md_jaw_start_bind_001"),
+    ):
+        offset = distance(world_position(joint), world_position(locator))
+        check(offset < 1e-4, u"{} 与 {} 偏移 {}".format(joint, locator, offset))
 
     ctrl_position = world_position("ctrl_md_jaw_main_001")
 
@@ -217,27 +226,30 @@ def check_jaw(guide):
 
     check(cmds.objExists("jnt_md_jaw_bind_001"), u"重复构建后下巴关节丢失")
 
-    # 传 3 个 Guide 时才建下巴尖
-    jaw_tip = Jaw(
+    # 传 root_guide 时才建面部根关节，下颌挂在它下面
+    jaw_root = Jaw(
         side="md",
         guides=[
-            guide.get_face_move(),
             guide.get_face_jaw(),
             guide.get_face_jaw_end(),
-        ]
+        ],
+        root_guide=guide.get_face_move(),
     )
-    jaw_tip.build_rig()
-    jaw_tip.connect_rig()
+    jaw_root.build_rig()
+    jaw_root.connect_rig()
 
-    check(cmds.objExists("jnt_md_jaw_tip_001"), u"3 个 Guide 时应创建下巴尖")
+    check(
+        cmds.objExists("jnt_md_face_root_001"),
+        u"传 root_guide 时应创建面部根关节"
+    )
 
-    jaw_tip.delete_rig()
+    jaw_root.delete_rig()
 
     jaw.delete_rig()
 
     for node in (
-        "jnt_md_face_root_001",
         "jnt_md_jaw_bind_001",
+        "jnt_md_jaw_tip_001",
         "ctrl_md_jaw_main_001",
         "mult_md_jaw_dropy_001",
         "loc_md_jaw_driver_001",
