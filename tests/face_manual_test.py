@@ -321,7 +321,6 @@ def run():
         print(u"有失败项 ❌ —— 把上面的输出发我")
 
     print(u"要清理：在同一个脚本编辑器里直接调用 cleanup()")
-          u"t.cleanup()\") 或是直接调用 cleanup()")
     print(u"=" * 60)
 
     return passed == total
