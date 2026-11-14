@@ -81,6 +81,12 @@ def world_position(node):
     return cmds.xform(node, query=True, worldSpace=True, translation=True)
 
 
+def guide_world(node):
+    u"""模板定位器的视觉位置（世界 rotate pivot）。"""
+
+    return cmds.xform(node, query=True, worldSpace=True, rotatePivot=True)
+
+
 def distance(first, second):
     u"""两点最大轴差。"""
 
@@ -188,7 +194,7 @@ def check_jaw(guide):
         ("jnt_md_jaw_tip_001", "loc_md_jaw_end_bind_001"),
         ("ctrl_md_jaw_main_001", "loc_md_jaw_start_bind_001"),
     ):
-        offset = distance(world_position(joint), world_position(locator))
+        offset = distance(world_position(joint), guide_world(locator))
         check(offset < 1e-4, u"{} 与 {} 偏移 {}".format(joint, locator, offset))
 
     ctrl_position = world_position("ctrl_md_jaw_main_001")

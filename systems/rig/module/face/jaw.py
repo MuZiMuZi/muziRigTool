@@ -44,7 +44,8 @@ class Jaw(FaceModule):
     u"""下巴：关节 + 控制器 + 旋转补位移。"""
 
     def __init__(self, side="md", guides=None, size=2.0, color=17,
-                 drop_y=0.03, drop_z=-0.04, root_guide=None, **kwargs):
+                 drop_y=0.03, drop_z=-0.04, root_guide=None,
+                 constraints=True, **kwargs):
         super().__init__(
             module="jaw",
             side=side,
@@ -54,6 +55,9 @@ class Jaw(FaceModule):
 
         # 可选的静态权重容器：给了才建根关节，不给就只有下颌 + 尖。
         self.root_guide = root_guide
+
+        # False = 只建关节和控制器，先不挂约束（排查用）。
+        self.constraints = constraints
 
         self.size = size
         self.color = color
@@ -149,13 +153,13 @@ class Jaw(FaceModule):
 
         self.jaw_joint = Jnt.create_jnt(
             self.joint_name,
-            target=self.guide_list[0],
+            position=self.guide_position(self.guide_list[0]),
             parent=parent
         )
 
         self.tip_joint = Jnt.create_jnt(
             self.tip_name,
-            target=self.guide_list[1],
+            position=self.guide_position(self.guide_list[1]),
             parent=self.jaw_joint.name
         )
 
@@ -210,7 +214,9 @@ class Jaw(FaceModule):
 
         self.add_drop_attrs()
         self.drive_connect_translate()
-        self.constrain_jaw()
+
+        if self.constraints:
+            self.constrain_jaw()
 
         return self.constraint_name
 

@@ -60,6 +60,15 @@ def world_position(node):
     return cmds.xform(node, query=True, worldSpace=True, translation=True)
 
 
+def guide_position(node):
+    u"""模板定位器的视觉位置（世界 rotate pivot）。"""
+
+    if not cmds.objExists(node):
+        return None
+
+    return cmds.xform(node, query=True, worldSpace=True, rotatePivot=True)
+
+
 def distance(first, second):
     u"""两点最大轴差。"""
 
@@ -106,7 +115,7 @@ def report_position(label, node, reference=None):
     )
 
     if reference is not None:
-        offset = distance(position, world_position(reference))
+        offset = distance(position, guide_position(reference))
         text += u"   偏差 {:.4f}  （参考 {}）".format(offset, reference)
 
         if offset > 1e-3:

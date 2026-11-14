@@ -33,7 +33,7 @@ class Eye(FaceModule):
     u"""单只眼球：关节 + 控制器 + 追踪约束。"""
 
     def __init__(self, side="lf", guides=None, size=2.0, color=6,
-                 shape="sphere", **kwargs):
+                 shape="sphere", constraints=True, **kwargs):
         super().__init__(
             module="eye",
             side=side,
@@ -42,6 +42,7 @@ class Eye(FaceModule):
         )
 
         self.size = size
+        self.constraints = constraints
         self.color = color
         self.shape = shape
 
@@ -104,7 +105,8 @@ class Eye(FaceModule):
         u"""眼球关节：蒙皮用，位置在眼球中心。"""
 
         self.joint = Jnt.create_jnt(
-            self.joint_name, target=self.guide_list[0]
+            self.joint_name,
+            position=self.guide_position(self.guide_list[0])
         )
 
     def create_ctrls(self):
@@ -152,6 +154,9 @@ class Eye(FaceModule):
 
         self.add_lid_attrs()
         self.attach_gaze()
+
+        if not self.constraints:
+            return None
 
         if cmds.objExists(self.constraint_name):
             return self.constraint_name

@@ -62,6 +62,19 @@ class FaceModule(RigModule):
     # ------------------------------------------------------------------
 
     @staticmethod
+    def guide_position(node):
+        u"""定位器的「视觉位置」：世界 rotate pivot。
+
+        这套模板的定位器把真实位置放在 pivot 上：
+        translation 和可视点（曲线 / 十字）差了 100 多单位，
+        直接读 translation 会让关节全部错位。
+        """
+
+        return cmds.xform(
+            node, query=True, worldSpace=True, rotatePivot=True
+        )
+
+    @staticmethod
     def snap_to(source, target, rotation=False):
         u"""把 target 吸附到 source 的世界位置（可带旋转）。
 
@@ -78,9 +91,7 @@ class FaceModule(RigModule):
         cmds.xform(
             target,
             worldSpace=True,
-            translation=cmds.xform(
-                source, query=True, worldSpace=True, translation=True
-            )
+            translation=FaceModule.guide_position(source)
         )
 
         if rotation:
@@ -111,9 +122,7 @@ class FaceModule(RigModule):
             cmds.xform(
                 target,
                 worldSpace=True,
-                translation=cmds.xform(
-                    source, query=True, worldSpace=True, translation=True
-                )
+                translation=FaceModule.guide_position(source)
             )
 
         if rotation:
