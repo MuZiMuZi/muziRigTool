@@ -32,8 +32,8 @@ from .base import FaceModule
 class Eye(FaceModule):
     u"""单只眼球：关节 + 控制器 + 追踪约束。"""
 
-    def __init__(self, side="lf", guides=None, size=2.0, color=6,
-                 shape="sphere", constraints=True, **kwargs):
+    def __init__(self, side="lf", guides=None, size=8.0, color=6,
+                 shape="arrow_1_thinbev", constraints=True, **kwargs):
         super().__init__(
             module="eye",
             side=side,
