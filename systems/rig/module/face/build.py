@@ -42,13 +42,14 @@ class FaceBuild(object):
 
     def __init__(self, config, side="lf", build_brows=True,
                  build_eyes=True, build_jaw=True, build_lids=True,
-                 pin_brows=False):
+                 build_parts=True, pin_brows=False):
         self.config = validate_models(config)
         self.side = side
         self.build_brows = build_brows
         self.build_eyes = build_eyes
         self.build_jaw = build_jaw
         self.build_lids = build_lids
+        self.build_parts = build_parts
         self.pin_brows = pin_brows
 
         self.locators = {}
@@ -58,6 +59,7 @@ class FaceBuild(object):
         self.eyes = {}
         self.lids = {}
         self.brows = {}
+        self.parts = {}
 
     # ------------------------------------------------------------------
     # 构建
@@ -85,6 +87,9 @@ class FaceBuild(object):
             for side in ("lf", "rt"):
                 self.lids[side] = self._build_lid(side)
 
+        if self.build_parts:
+            self._build_extra_parts()
+
         if self.build_brows:
             for side in ("lf", "rt"):
                 self.brows[side] = self._build_brow(side)
@@ -97,6 +102,7 @@ class FaceBuild(object):
             "eyes": self.eyes,
             "lids": self.lids,
             "brows": self.brows,
+            "parts": self.parts,
         }
 
     def _build_jaw(self):
@@ -145,6 +151,155 @@ class FaceBuild(object):
 
         return lid
 
+    def _build_chain_part(self, key, module, side, chains, **kwargs):
+        from .chain_module import ChainedPart
+
+        part = ChainedPart(side=side, chains=chains, module=module, **kwargs)
+        part.delete_rig()
+        part.build_rig()
+        part.connect_rig()
+        self.parts[key] = part
+
+        return part
+
+    def _build_extra_parts(self):
+        u"""鼻子 / 脸颊 / 颧骨 / 下颚 / 耳朵 / 舌头 / 牙齿 / 拉伸 / 嘴唇。"""
+
+        locators = self.locators
+
+        # 鼻子：中线两节 + 口鼻 + 左右鼻翼
+        self._build_chain_part(
+            "nose", "nose", "md",
+            [("nose", [locators["nose"], locators["nose_center"]])]
+        )
+        self._build_chain_part(
+            "muzzle", "muzzle", "md",
+            [("muzzle", [locators["muzzle"]])]
+        )
+
+        for side in ("lf", "rt"):
+            data = locators[side]
+
+            side_nose = data.get("nose_side")
+
+            if side_nose:
+                self._build_chain_part(
+                    "nose_side_" + side, "nose_side", side,
+                    [("nose_side", [side_nose])]
+                )
+
+            if data.get("cheek"):
+                self._build_chain_part(
+                    "cheek_" + side, "cheek", side,
+                    [("cheek", [data["cheek"]])]
+                )
+
+            if data.get("squint"):
+                self._build_chain_part(
+                    "squint_" + side, "squint", side,
+                    [("squint", [data["squint"]])]
+                )
+
+            if data.get("ear"):
+                self._build_chain_part(
+                    "ear_" + side, "ear", side,
+                    [("ear", data["ear"])]
+                )
+
+            front = [
+                item for item in data.get("stretch_front", []) if item
+            ]
+            back = [
+                item for item in data.get("stretch_back", []) if item
+            ]
+
+            chains = []
+
+            if front:
+                chains.append(("stretch_front", front))
+            if back:
+                chains.append(("stretch_back", back))
+
+            if chains:
+                self._build_chain_part(
+                    "stretch_" + side, "stretch", side, chains
+                )
+
+        if locators.get("pucker"):
+            self._build_chain_part(
+                "pucker", "pucker", "md",
+                [("pucker", [locators["pucker"]])]
+            )
+
+        upper_teeth, lower_teeth = self._teeth_locators()
+
+        if upper_teeth and lower_teeth:
+            self._build_chain_part(
+                "teeth", "teeth", "md",
+                [("teeth_up", [upper_teeth]),
+                 ("teeth_low", [lower_teeth])]
+            )
+
+        tongue = self._tongue_locators()
+
+        if tongue:
+            self._build_chain_part(
+                "tongue", "tongue", "md", [("tongue", tongue)]
+            )
+
+        self._build_lips()
+
+    def _teeth_locators(self):
+        from ...guide import Guide
+
+        guide = Guide("face")
+        return guide.get_face_teeth()
+
+    def _tongue_locators(self):
+        from ...guide import Guide
+
+        guide = Guide("face")
+        return guide.get_face_tongue()
+
+    def _build_lips(self):
+        u"""嘴唇：左右各上/下两节 + 嘴角，中线各一节。"""
+
+        from ...guide import Guide
+
+        guide = Guide("face")
+
+        for side in ("lf", "rt"):
+            upper = self.locators[side].get("lip_upper", [])
+            lower = self.locators[side].get("lip_lower", [])
+            corner = guide.get_face_mouth_corner(side)
+
+            chains = []
+
+            if upper:
+                chains.append(("lip_up", upper))
+            if lower:
+                chains.append(("lip_low", lower))
+            if corner:
+                chains.append(("lip_corner", [corner]))
+
+            if chains:
+                self._build_chain_part(
+                    "lip_" + side, "lip", side, chains
+                )
+
+        upper_md = guide.get_face_lip_bind("md", "upper")
+        lower_md = guide.get_face_lip_bind("md", "lower")
+
+        chains = []
+
+        if upper_md:
+            chains.append(("lip_up", upper_md))
+        if lower_md:
+            chains.append(("lip_low", lower_md))
+
+        if chains:
+            self._build_chain_part("lip_md", "lip", "md", chains)
+
     def _build_brow(self, side):
         from .brow import Brow
 
@@ -182,6 +337,9 @@ class FaceBuild(object):
 
         for brow in self.brows.values():
             brow.delete_rig()
+
+        for part in self.parts.values():
+            part.delete_rig()
 
         for lid in self.lids.values():
             lid.delete_rig()

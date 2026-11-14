@@ -231,6 +231,84 @@ class FaceModule(RigModule):
         return ctrl
 
     # ------------------------------------------------------------------
+    # 关节链 / 单关节控制器
+    # ------------------------------------------------------------------
+
+    def create_chain_from_guides(self, names, guides, parent=None):
+        u"""按定位器批量建关节链。
+
+        Args:
+            names (list): 关节名。
+            guides (list): 定位器（与名字一一对应）。
+            parent (str | None): 整条链的父节点。
+
+        Returns:
+            list: Jnt 列表。
+        """
+
+        from .....core.jnt_utils import Jnt
+
+        joints = []
+        current_parent = parent
+
+        for name, guide in zip(names, guides):
+            joint = Jnt.create_jnt(
+                name,
+                position=self.guide_position(guide),
+                parent=current_parent
+            )
+            joints.append(joint)
+            current_parent = joint.name
+
+        return joints
+
+    def create_joint_ctrl(self, ctrl_name, joint, shape="circle",
+                          size=None, color=None):
+        u"""给一个关节建控制器，位置写进 offset 组。
+
+        Returns:
+            Ctrl: 控制器对象。
+        """
+
+        ctrl = self.create_face_ctrl(
+            ctrl_name,
+            target=None,
+            shape=shape,
+            color=color,
+            size=size
+        )
+
+        offset_grp = ctrl_name.replace("ctrl_", "offset_", 1)
+
+        if cmds.objExists(offset_grp):
+            self.copy_world_transform(
+                joint, offset_grp, position=True, rotation=False
+            )
+
+        return ctrl
+
+    def constrain_ctrl(self, ctrl, joint, name=None):
+        u"""控制器 output 约束关节（保留偏移）。"""
+
+        if name and cmds.objExists(name):
+            cmds.delete(name)
+
+        return cmds.parentConstraint(
+            ctrl.get_output(), joint,
+            maintainOffset=True,
+            **({"name": name} if name else {})
+        )[0]
+
+    def attach_zero_groups(self, ctrl_names, parent):
+        u"""把一批控制器的 zero 组挂到指定父级。"""
+
+        for ctrl_name in ctrl_names:
+            zero_name = ctrl_name.replace("ctrl_", "zero_", 1)
+
+            if cmds.objExists(zero_name):
+                cmds.parent(zero_name, parent, absolute=True)
+
+    # ------------------------------------------------------------------
     # 属性
     # ------------------------------------------------------------------
 

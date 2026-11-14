@@ -252,6 +252,8 @@ class FaceSetup(object):
                 "lip_upper": self.guide.get_face_lip_bind(side, "upper"),
                 "lip_lower": self.guide.get_face_lip_bind(side, "lower"),
                 "mouth_corner": self.guide.get_face_mouth_corner(side),
+                "nose_side": self.guide.get_face_nose_side(side),
+                "ear": self.guide.get_face_ear(side),
                 "squint": self.guide.get_face_single(
                     "loc_{}_squint_bind_001".format(side)
                 ),
@@ -260,13 +262,13 @@ class FaceSetup(object):
                 ),
                 "stretch_front": [
                     self.guide.get_face_single(
-                        "loc_{}_stretch_front_bind_{:03d}".format(side, i)
+                        "loc_{}_stretch_front_{:03d}".format(side, i)
                     )
                     for i in range(1, 4)
                 ],
                 "stretch_back": [
                     self.guide.get_face_single(
-                        "loc_{}_stretch_back_bind_{:03d}".format(side, i)
+                        "loc_{}_stretch_back_{:03d}".format(side, i)
                     )
                     for i in range(1, 4)
                 ],
