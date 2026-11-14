@@ -58,6 +58,43 @@ class FaceModule(RigModule):
         self.connection_nodes = []
 
     # ------------------------------------------------------------------
+    # 对齐
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def copy_world_transform(source, target, position=True, rotation=True):
+        u"""复制世界位置 / 旋转。
+
+        不能用 cmds.matchTransform：模板定位器带 rotatePivot 偏移，
+        matchTransform 会按枢轴对齐，结果落在原点 + 枢轴的位置。
+        直接读世界平移 / 旋转再写回去才稳。
+
+        Args:
+            source (str): 取变换的对象（模板定位器）。
+            target (str): 被对齐的对象（关节 / 控制器 / zero 组）。
+            position (bool): 是否复制位置。
+            rotation (bool): 是否复制旋转。
+        """
+
+        if position:
+            cmds.xform(
+                target,
+                worldSpace=True,
+                translation=cmds.xform(
+                    source, query=True, worldSpace=True, translation=True
+                )
+            )
+
+        if rotation:
+            cmds.xform(
+                target,
+                worldSpace=True,
+                rotation=cmds.xform(
+                    source, query=True, worldSpace=True, rotation=True
+                )
+            )
+
+    # ------------------------------------------------------------------
     # 控制器
     # ------------------------------------------------------------------
 
@@ -73,18 +110,33 @@ class FaceModule(RigModule):
             Ctrl: 控制器对象。
         """
 
-        return Ctrl.create_ctrl(
+        ctrl = Ctrl.create_ctrl(
             name,
             shape=shape,
             color=self.default_color if color is None else color,
             size=self.default_size if size is None else size,
             axis=axis,
-            target=target,
             hierarchy=hierarchy,
-            match_position=True,
-            match_rotation=match_rotation,
+            match_position=False,
+            match_rotation=False,
             match_scale=False
         )
+
+        if target is not None:
+            # 对齐最外层的 zero 组，控制器在组内部保持零偏移。
+            # 对齐 ctrl 本身会把变换写进组内的局部值，之后组一动就翻倍。
+            zero_grp = name.replace("ctrl_", "zero_", 1)
+            anchor = zero_grp if (
+                hierarchy and cmds.objExists(zero_grp)
+            ) else ctrl.name
+
+            self.copy_world_transform(
+                target, anchor,
+                position=True,
+                rotation=match_rotation
+            )
+
+        return ctrl
 
     # ------------------------------------------------------------------
     # 属性
@@ -146,6 +198,19 @@ class FaceModule(RigModule):
             function="driven", index=parsed.index
         ).name
 
+        # 同名旧节点先清掉：重建时旧模块的 locator 在世界层，
+        # 不一定跟着 jnt / ctrl 组一起删掉，留着会抢名字。
+        for node in (
+            driver, driven,
+            driver.replace("loc_", "zero_", 1),
+            driven.replace("loc_", "zero_", 1),
+        ):
+            if cmds.objExists(node):
+                cmds.delete(node)
+
+        if name and cmds.objExists(name):
+            cmds.delete(name)
+
         zero_driver = cmds.createNode(
             "transform", name=driver.replace("loc_", "zero_", 1)
         )
@@ -157,23 +222,27 @@ class FaceModule(RigModule):
         # 注意：不能写成 matchTransform(zero_driver, zero_driven, ctrl)——
         # Maya 只把第一个对象对齐到最后一个源，第二个会留在原点。
         for zero in (zero_driver, zero_driven):
-            cmds.matchTransform(
-                zero, ctrl.name, position=True, rotation=True
+            self.copy_world_transform(
+                ctrl.name, zero, position=True, rotation=True
             )
 
         loc_driver = cmds.spaceLocator(name=driver)[0]
         loc_driven = cmds.spaceLocator(name=driven)[0]
 
         # parent 默认会保世界位置，locator 建在原点后挂到 zero 组下
-        # 会留下一个反向偏移；这里把局部变换清零，让它和 zero 重合。
+        # 会留下一个反向偏移；挂接后把它清零，让它和 zero 重合。
+        # 用短名操作：spaceLocator 在重名时可能返回带竖线的全路径。
         for locator, zero in (
             (loc_driver, zero_driver),
             (loc_driven, zero_driven),
         ):
             cmds.parent(locator, zero)
-            cmds.setAttr(locator + ".translate", 0.0, 0.0, 0.0)
-            cmds.setAttr(locator + ".rotate", 0.0, 0.0, 0.0)
-            cmds.setAttr(locator + ".scale", 1.0, 1.0, 1.0)
+
+            short_name = locator.split("|")[-1]
+
+            cmds.setAttr(short_name + ".translate", 0.0, 0.0, 0.0)
+            cmds.setAttr(short_name + ".rotate", 0.0, 0.0, 0.0)
+            cmds.setAttr(short_name + ".scale", 1.0, 1.0, 1.0)
 
         cmds.parentConstraint(
             ctrl.get_output(), loc_driver, maintainOffset=True

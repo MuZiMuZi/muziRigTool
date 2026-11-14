@@ -160,7 +160,6 @@ def check_jaw(guide):
         guides=[
             guide.get_face_move(),
             guide.get_face_jaw(),
-            guide.get_face_jaw_end(),
         ]
     )
     jaw.build_rig()
@@ -169,7 +168,6 @@ def check_jaw(guide):
     for node in (
         "jnt_md_face_root_001",
         "jnt_md_jaw_bind_001",
-        "jnt_md_jaw_tip_001",
         "ctrl_md_jaw_main_001",
         "mult_md_jaw_dropy_001",
         "mult_md_jaw_dropz_001",
@@ -178,6 +176,11 @@ def check_jaw(guide):
         "loc_md_jaw_driven_001",
     ):
         check(cmds.objExists(node), u"下巴缺少节点：{}".format(node))
+
+    check(
+        not cmds.objExists("jnt_md_jaw_tip_001"),
+        u"2 个 Guide 时不该创建下巴尖关节"
+    )
 
     ctrl_position = world_position("ctrl_md_jaw_main_001")
 
@@ -214,12 +217,27 @@ def check_jaw(guide):
 
     check(cmds.objExists("jnt_md_jaw_bind_001"), u"重复构建后下巴关节丢失")
 
+    # 传 3 个 Guide 时才建下巴尖
+    jaw_tip = Jaw(
+        side="md",
+        guides=[
+            guide.get_face_move(),
+            guide.get_face_jaw(),
+            guide.get_face_jaw_end(),
+        ]
+    )
+    jaw_tip.build_rig()
+    jaw_tip.connect_rig()
+
+    check(cmds.objExists("jnt_md_jaw_tip_001"), u"3 个 Guide 时应创建下巴尖")
+
+    jaw_tip.delete_rig()
+
     jaw.delete_rig()
 
     for node in (
         "jnt_md_face_root_001",
         "jnt_md_jaw_bind_001",
-        "jnt_md_jaw_tip_001",
         "ctrl_md_jaw_main_001",
         "mult_md_jaw_dropy_001",
         "loc_md_jaw_driver_001",

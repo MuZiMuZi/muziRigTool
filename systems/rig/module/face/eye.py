@@ -120,12 +120,9 @@ class Eye(FaceModule):
 
         self.gaze_locator = cmds.spaceLocator(name=self.gaze_name)[0]
         cmds.setAttr(self.gaze_locator + ".visibility", 0)
-        cmds.matchTransform(
-            self.gaze_locator,
-            self.guide_list[1],
-            position=True,
-            rotation=False,
-            scale=False
+        self.copy_world_transform(
+            self.guide_list[1], self.gaze_locator,
+            position=True, rotation=False
         )
 
     # ------------------------------------------------------------------
