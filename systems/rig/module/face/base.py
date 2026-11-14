@@ -62,6 +62,37 @@ class FaceModule(RigModule):
     # ------------------------------------------------------------------
 
     @staticmethod
+    def snap_to(source, target, rotation=False):
+        u"""把 target 吸附到 source 的世界位置（可带旋转）。
+
+        建完关节 / 控制器、挂好层级之后再调一次，
+        保证最终位置和模板定位器完全一致——
+        parent 过程中任何偏移都会被这一步抹平。
+
+        Args:
+            source (str): 模板定位器。
+            target (str): 关节 / 控制器 / 组。
+            rotation (bool): 是否同时复制世界旋转。
+        """
+
+        cmds.xform(
+            target,
+            worldSpace=True,
+            translation=cmds.xform(
+                source, query=True, worldSpace=True, translation=True
+            )
+        )
+
+        if rotation:
+            cmds.xform(
+                target,
+                worldSpace=True,
+                rotation=cmds.xform(
+                    source, query=True, worldSpace=True, rotation=True
+                )
+            )
+
+    @staticmethod
     def copy_world_transform(source, target, position=True, rotation=True):
         u"""复制世界位置 / 旋转。
 

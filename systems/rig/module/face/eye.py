@@ -139,6 +139,10 @@ class Eye(FaceModule):
         zero_grp = self.ctrl_name.replace("ctrl_", "zero_", 1)
         cmds.parent(zero_grp, self.ctrl_master_grp, absolute=True)
 
+        # 挂完层级再吸附，保证和模板定位器一致
+        self.snap_to(self.guide_list[0], self.joint.name, rotation=False)
+        self.snap_to(self.guide_list[0], zero_grp, rotation=False)
+
     # ------------------------------------------------------------------
     # 连接
     # ------------------------------------------------------------------

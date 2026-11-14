@@ -189,6 +189,15 @@ class Jaw(FaceModule):
                 self.jaw_joint.name, self.jnt_master_grp, absolute=True
             )
 
+        # 挂完层级再吸附一次：parent 过程中的偏移在这里抹平
+        self.snap_to(self.guide_list[0], self.jaw_joint.name, rotation=True)
+        self.snap_to(self.guide_list[1], self.tip_joint.name, rotation=True)
+
+        zero_grp = self.ctrl_name.replace("ctrl_", "zero_", 1)
+
+        if cmds.objExists(zero_grp):
+            self.snap_to(self.guide_list[0], zero_grp, rotation=True)
+
         zero_grp = self.ctrl_name.replace("ctrl_", "zero_", 1)
         cmds.parent(zero_grp, self.ctrl_master_grp, absolute=True)
 
