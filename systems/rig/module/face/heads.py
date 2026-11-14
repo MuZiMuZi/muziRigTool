@@ -165,6 +165,56 @@ def build_heads(head_mesh, side="md", layers="two_bs"):
     return names
 
 
+def build_pin_head(stretch, side="md", follow="stretch"):
+    u"""复制 stretch 头当 uvPin 的参考面。
+
+    两种跟法：
+
+        follow="stretch"  stretch 作为 blendshape 目标 → 表情 + 挤压拉伸都跟
+                          注意：控制器如果又驱动 stretch 的上游，会形成
+                          「控制器 → 关节 → stretch → pin 头 → 控制器」的环，
+                          Maya 会报 cycle。只适合纯显示/不参与驱动的 pin。
+        follow="squash"   只复制 rest 网格并复制蒙皮权重（调用方负责
+                          copySkinWeights），只跟挤压拉伸，不跟表情，
+                          不会成环。
+
+    Args:
+        stretch (str): stretch 头。
+        side (str): md / lf / rt。
+        follow (str): stretch / squash。
+
+    Returns:
+        dict: pin 头与 blendshape 节点名。
+    """
+
+    if not cmds.objExists(stretch):
+        raise RuntimeError(u"找不到 stretch 头：{}".format(stretch))
+
+    pin_name = _name("mesh", "pin", side)
+    bs_name = _name("bsn", "stretch2pin", side)
+
+    if cmds.objExists(pin_name):
+        cmds.delete(pin_name)
+
+    pin = cmds.duplicate(stretch, name=pin_name)[0]
+
+    if cmds.listRelatives(pin, parent=True):
+        cmds.parent(pin, world=True)
+
+    if follow == "stretch":
+        bs_name = cmds.blendShape(stretch, pin, name=bs_name)[0]
+        cmds.setAttr("{}.weight[0]".format(bs_name), 1.0)
+    else:
+        bs_name = ""
+
+    cmds.setAttr(pin + ".visibility", 0)
+
+    return {
+        "pin": pin,
+        "blendshape": bs_name,
+    }
+
+
 def delete_heads(side="md"):
     u"""删掉三层头（保留原始模型）。"""
 
