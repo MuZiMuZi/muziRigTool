@@ -3,9 +3,9 @@ u"""面部绑定 M1 的 Maya 冒烟测试（jaw + eye）。
 
 验证：
 
-1. face_guide.ma 能被 Guide 读出来（根 / 下巴 / 眼球 / 眼皮 / 眉毛定位器数量）
-2. Jaw：节点齐全、鼻环系数正确、locator 对连接存在
-3. Eye：目标约束存在、眼球 X 轴指向控制器、blink/link 属性存在
+1. face_guide.ma（课程版）能被 Guide 读出来
+2. Jaw：根 / 下颌 / 下巴尖三个关节、系数、locator 对对齐
+3. Eye：目标约束、视线跟随、blink/link 属性
 4. 重复构建、删除后无残留
 
 跑法（mayapy）：
@@ -81,35 +81,75 @@ def world_position(node):
     return cmds.xform(node, query=True, worldSpace=True, translation=True)
 
 
+def distance(first, second):
+    u"""两点最大轴差。"""
+
+    return max(abs(first[index] - second[index]) for index in range(3))
+
+
 def check_template(guide):
     u"""模板定位器数量与命名。"""
 
-    check(guide.get_face_root(), u"缺少面部根定位器")
-    check(guide.get_face_jaw(), u"缺少下巴定位器")
+    check(guide.get_face_move(), u"缺少 face_move 控制器")
+    check(guide.get_face_jaw(), u"缺少下颌枢轴定位器")
+    check(guide.get_face_jaw_end(), u"缺少下巴尖定位器")
 
     for side in SIDE_LIST:
-        check(guide.get_face_eye(side), u"缺少 {} 眼球定位器".format(side))
-        check(guide.get_face_eyeup(side), u"缺少 {} 眼 up 定位器".format(side))
+        check(guide.get_face_eye(side), u"缺少 {} 眼球".format(side))
+        check(guide.get_face_eye_iris(side), u"缺少 {} 虹膜".format(side))
+        check(guide.get_face_eye_aim(side), u"缺少 {} 视线目标".format(side))
+
         check(
-            len(guide.get_face_brow(side)) == 9,
+            len(guide.get_face_brow_bind(side)) == 5,
             u"{} 眉毛定位器数量不对".format(side)
         )
         check(
-            len(guide.get_face_brow_curve(side, "crv")) == 7,
-            u"{} 眉毛驱动曲线定位器数量不对".format(side)
+            guide.get_face_brow_main(side), u"{} 缺少眉毛主控".format(side)
         )
         check(
-            len(guide.get_face_brow_curve(side, "aim")) == 7,
-            u"{} 眉毛目标曲线定位器数量不对".format(side)
+            guide.get_face_brow_curve(side), u"{} 缺少眉毛曲线".format(side)
         )
         check(
-            len(guide.get_face_lid_curve(side, "up")) == 9,
-            u"{} 上眼皮曲线定位器数量不对".format(side)
+            guide.get_face_lid_curve(side, "upper"),
+            u"{} 缺少上眼皮曲线".format(side)
         )
         check(
-            len(guide.get_face_lid_curve(side, "low")) == 9,
-            u"{} 下眼皮曲线定位器数量不对".format(side)
+            guide.get_face_lid_curve(side, "lower"),
+            u"{} 缺少下眼皮曲线".format(side)
         )
+        check(
+            len(guide.get_face_lid_bind(side, "upper")) == 3,
+            u"{} 上眼皮定位器数量不对".format(side)
+        )
+        check(
+            len(guide.get_face_lid_bind(side, "lower")) == 3,
+            u"{} 下眼皮定位器数量不对".format(side)
+        )
+        check(
+            guide.get_face_mouth_corner(side),
+            u"{} 缺少嘴角定位器".format(side)
+        )
+        check(
+            len(guide.get_face_ear(side)) == 3,
+            u"{} 耳朵定位器数量不对".format(side)
+        )
+        check(
+            len(guide.get_face_zygoma(side)) == 3,
+            u"{} 颧骨定位器数量不对".format(side)
+        )
+
+    check(guide.get_face_lip_curve("upper"), u"缺少上唇曲线")
+    check(guide.get_face_lip_curve("lower"), u"缺少下唇曲线")
+    check(
+        len(guide.get_face_lip_bind("lf", "upper")) == 2,
+        u"左上唇定位器数量不对"
+    )
+    check(guide.get_face_nose(), u"缺少鼻子定位器")
+    check(guide.get_face_muzzle(), u"缺少口鼻定位器")
+
+    upper_teeth, lower_teeth = guide.get_face_teeth()
+    check(upper_teeth and lower_teeth, u"缺少牙齿定位器")
+    check(len(guide.get_face_tongue()) == 5, u"舌头定位器数量不对")
 
 
 def check_jaw(guide):
@@ -117,7 +157,11 @@ def check_jaw(guide):
 
     jaw = Jaw(
         side="md",
-        guides=[guide.get_face_root(), guide.get_face_jaw()]
+        guides=[
+            guide.get_face_move(),
+            guide.get_face_jaw(),
+            guide.get_face_jaw_end(),
+        ]
     )
     jaw.build_rig()
     jaw.connect_rig()
@@ -125,6 +169,7 @@ def check_jaw(guide):
     for node in (
         "jnt_md_face_root_001",
         "jnt_md_jaw_bind_001",
+        "jnt_md_jaw_tip_001",
         "ctrl_md_jaw_main_001",
         "mult_md_jaw_dropy_001",
         "mult_md_jaw_dropz_001",
@@ -134,33 +179,16 @@ def check_jaw(guide):
     ):
         check(cmds.objExists(node), u"下巴缺少节点：{}".format(node))
 
-    # 两个 zero 组必须和控制器同位置（曾经把 driven 留在原点）
     ctrl_position = world_position("ctrl_md_jaw_main_001")
 
-    for zero in ("zero_md_jaw_driver_001", "zero_md_jaw_driven_001"):
-        zero_position = world_position(zero)
-        distance = max(
-            abs(zero_position[index] - ctrl_position[index])
-            for index in range(3)
-        )
+    for node in ("zero_md_jaw_driver_001", "zero_md_jaw_driven_001",
+                 "loc_md_jaw_driver_001", "loc_md_jaw_driven_001"):
+        offset = distance(world_position(node), ctrl_position)
         check(
-            distance < 1e-4,
-            u"{} 没有对齐控制器，偏差 {}".format(zero, distance)
+            offset < 1e-4,
+            u"{} 没有对齐控制器，偏差 {}".format(node, offset)
         )
 
-    # locator 也必须和 zero 组重合（曾经留在原点）
-    for locator in ("loc_md_jaw_driver_001", "loc_md_jaw_driven_001"):
-        locator_position = world_position(locator)
-        distance = max(
-            abs(locator_position[index] - ctrl_position[index])
-            for index in range(3)
-        )
-        check(
-            distance < 1e-4,
-            u"{} 没有对齐控制器，偏差 {}".format(locator, distance)
-        )
-
-    # 控制器 → connect 组的系数
     cmds.setAttr("ctrl_md_jaw_main_001.rotateX", -20.0)
 
     translate_y = cmds.getAttr("connect_md_jaw_main_001.translateY")
@@ -175,48 +203,41 @@ def check_jaw(guide):
         u"下巴 Z 位移不对：{}".format(translate_z)
     )
 
-    # 下巴关节的世界位置应当跟着动
     moved = world_position("jnt_md_jaw_bind_001")
     cmds.setAttr("ctrl_md_jaw_main_001.rotateX", 0.0)
     still = world_position("jnt_md_jaw_bind_001")
 
-    check(
-        abs(moved[1] - still[1]) > 1e-3 or abs(moved[2] - still[2]) > 1e-3,
-        u"下巴关节没有跟随控制器"
-    )
+    check(distance(moved, still) > 1e-3, u"下巴关节没有跟随控制器")
 
-    # 重复构建不能报错
     jaw.build_rig()
     jaw.connect_rig()
 
-    check(
-        cmds.objExists("jnt_md_jaw_bind_001"),
-        u"重复构建后下巴关节丢失"
-    )
+    check(cmds.objExists("jnt_md_jaw_bind_001"), u"重复构建后下巴关节丢失")
 
     jaw.delete_rig()
 
     for node in (
         "jnt_md_face_root_001",
         "jnt_md_jaw_bind_001",
+        "jnt_md_jaw_tip_001",
         "ctrl_md_jaw_main_001",
         "mult_md_jaw_dropy_001",
         "loc_md_jaw_driver_001",
     ):
-        check(
-            not cmds.objExists(node),
-            u"删除后仍有残留：{}".format(node)
-        )
+        check(not cmds.objExists(node), u"删除后仍有残留：{}".format(node))
 
     return jaw
 
 
 def check_eye(guide):
-    u"""眼球：结构 + 目标约束 + 追踪角度。"""
+    u"""眼球：结构 + 视线跟随。"""
 
     eye = Eye(
         side="lf",
-        guides=[guide.get_face_eye("lf"), guide.get_face_eyeup("lf")]
+        guides=[
+            guide.get_face_eye("lf"),
+            guide.get_face_eye_aim("lf"),
+        ]
     )
     eye.build_rig()
     eye.connect_rig()
@@ -224,7 +245,7 @@ def check_eye(guide):
     for node in (
         "jnt_lf_eye_bind_001",
         "ctrl_lf_eye_main_001",
-        "loc_lf_eye_up_001",
+        "loc_lf_eye_gaze_001",
         "cons_lf_eye_aim_001",
     ):
         check(cmds.objExists(node), u"眼球缺少节点：{}".format(node))
@@ -236,42 +257,36 @@ def check_eye(guide):
             u"眼球控制器缺少属性：{}".format(attribute)
         )
 
-    # 控制器默认在眼球正前方，X 轴应指向它
     joint = world_position("jnt_lf_eye_bind_001")
-    target = world_position("ctrl_lf_eye_main_001")
-    direction = [target[index] - joint[index] for index in range(3)]
+    gaze = world_position("loc_lf_eye_gaze_001")
+    direction = [gaze[index] - joint[index] for index in range(3)]
 
     angle = vector_angle(joint_axis("jnt_lf_eye_bind_001", 0), direction)
+    check(angle < 1.0, u"眼球没有看向目标点：{} 度".format(angle))
 
-    check(angle < 1.0, u"眼球没有看向控制器：{} 度".format(angle))
-
-    # 把控制器往上移，眼球应跟着抬头
+    # 控制器向上移一段，视线应跟着抬头
+    ctrl = world_position("ctrl_lf_eye_main_001")
     cmds.xform(
         "ctrl_lf_eye_main_001",
         worldSpace=True,
-        translation=[target[0], target[1] + 4.0, target[2]]
+        translation=[ctrl[0], ctrl[1] + 50.0, ctrl[2]]
     )
 
-    new_target = world_position("ctrl_lf_eye_main_001")
-    direction = [
-        new_target[index] - joint[index] for index in range(3)
-    ]
+    gaze = world_position("loc_lf_eye_gaze_001")
+    direction = [gaze[index] - joint[index] for index in range(3)]
     angle = vector_angle(joint_axis("jnt_lf_eye_bind_001", 0), direction)
 
-    check(angle < 1.0, u"眼球没有跟随控制器抬头：{} 度".format(angle))
+    check(angle < 1.0, u"眼球没有跟随控制器：{} 度".format(angle))
 
     eye.delete_rig()
 
     for node in (
         "jnt_lf_eye_bind_001",
         "ctrl_lf_eye_main_001",
-        "loc_lf_eye_up_001",
+        "loc_lf_eye_gaze_001",
         "cons_lf_eye_aim_001",
     ):
-        check(
-            not cmds.objExists(node),
-            u"删除后仍有残留：{}".format(node)
-        )
+        check(not cmds.objExists(node), u"删除后仍有残留：{}".format(node))
 
     return eye
 
@@ -288,9 +303,9 @@ def run():
     check_jaw(guide)
     check_eye(guide)
 
-    print(u"PASS: face_guide 模板读取")
+    print(u"PASS: face_guide 模板读取（课程版命名）")
     print(u"PASS: Jaw 结构 / 旋转补位移 / 重建 / 删除")
-    print(u"PASS: Eye 结构 / 目标约束 / 追踪 / 删除")
+    print(u"PASS: Eye 结构 / 视线跟随 / 删除")
 
     return True
 

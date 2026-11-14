@@ -65,6 +65,7 @@ class Jaw(FaceModule):
 
         self.root_joint = None
         self.jaw_joint = None
+        self.tip_joint = None
         self.ctrl = None
 
     # ------------------------------------------------------------------
@@ -76,11 +77,10 @@ class Jaw(FaceModule):
 
         super().get_guides()
 
-        if len(self.guide_list) != 2:
+        if len(self.guide_list) != 3:
             raise RuntimeError(
-                u"下巴需要 2 个 Guide（根 / 下巴枢轴），收到 {} 个".format(
-                    len(self.guide_list)
-                )
+                u"下巴需要 3 个 Guide（面部根 / 下颌枢轴 / 下巴尖），"
+                u"收到 {} 个".format(len(self.guide_list))
             )
 
         self.build_names()
@@ -98,6 +98,11 @@ class Jaw(FaceModule):
         self.joint_name = Name(
             type="jnt", side=self.side, part="jaw",
             function="bind", index=1
+        ).name
+
+        self.tip_name = Name(
+            type="jnt", side=self.side, part="jaw",
+            function="tip", index=1
         ).name
 
         self.ctrl_name = Name(
@@ -136,6 +141,11 @@ class Jaw(FaceModule):
             self.joint_name,
             target=self.guide_list[1],
             parent=self.root_joint.name
+        )
+        self.tip_joint = Jnt.create_jnt(
+            self.tip_name,
+            target=self.guide_list[2],
+            parent=self.jaw_joint.name
         )
 
     def create_ctrls(self):
@@ -263,6 +273,7 @@ class Jaw(FaceModule):
 
         self.root_joint = None
         self.jaw_joint = None
+        self.tip_joint = None
         self.ctrl = None
 
         return delete_nodes

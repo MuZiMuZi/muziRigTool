@@ -2,27 +2,24 @@
 u"""眼球模块：控制器 + 目标约束（眼球追踪）。
 
 眼球是球，位置不动、只转方向，所以用目标约束比旋转约束直观：
-动画师拖控制器，眼球就「看」向控制器。
+动画师拖控制器，眼球就「看」向目标点。
 
-朝向约定（16-03）：
+模板（face_guide.ma）给的东西：
 
-    X 轴  目标向量（眼睛看出去的方向）
-    Y 轴  向上方向，由 up 定位器给出，避免跟着控制器翻滚
+    loc_<side>_eye_ball_001   眼球中心
+    loc_<side>_eye_iris_001   虹膜位置（显示参考，本模块不用）
+    loc_<side>_eye_aim_001    视线目标点（在眼球正前方很远）
 
-所以约束必须带一个稳定的 up 物体：
-    worldUpType = objectrotation
-    worldUpObject = 面部自己的 up 定位器
+做法：
 
-如果用 scene up 或 vector，眼球在控制器绕自己转的时候会跟着翻，
-左右眼的翻滚方向还容易不一致。
+    关节放在眼球中心，控制器放在眼球中心，
+    复制一个 gaze 定位器到 aim 的位置、挂到控制器下面；
+    眼球 X 轴始终盯住 gaze。
 
-控制器上额外放两个给眼皮用的属性（16-15）：
+这样拖控制器 / 转控制器都会带着 gaze 走，视线就跟着变；
+模板里的 aim 定位器保持只读，不会被绑定删掉。
 
-    blink  0-1   0 正常、1 完全闭合
-    link   0-1   0 贴下眼皮、1 贴上眼皮（默认 0.5）
-
-注意：眼球的旋转是「目标约束」独占的，
-关节本身不要再连别的旋转驱动，否则两套会打架。
+注意：眼球的旋转由目标约束独占，关节不要再接别的旋转驱动。
 """
 
 from maya import cmds
@@ -35,8 +32,8 @@ from .base import FaceModule
 class Eye(FaceModule):
     u"""单只眼球：关节 + 控制器 + 追踪约束。"""
 
-    def __init__(self, side="lf", guides=None, size=1.2, color=6,
-                 shape="sphere", forward=6.0, **kwargs):
+    def __init__(self, side="lf", guides=None, size=2.0, color=6,
+                 shape="sphere", **kwargs):
         super().__init__(
             module="eye",
             side=side,
@@ -48,31 +45,27 @@ class Eye(FaceModule):
         self.color = color
         self.shape = shape
 
-        # 控制器放在眼球中心正前方（+X），拖它决定视线。
-        # 放在球心会和关节重合，目标约束的方向就退化了。
-        self.forward = forward
-
         self.joint_name = ""
         self.ctrl_name = ""
-        self.up_name = ""
+        self.gaze_name = ""
         self.constraint_name = ""
 
         self.joint = None
         self.ctrl = None
-        self.up_locator = None
+        self.gaze_locator = None
 
     # ------------------------------------------------------------------
     # Guide
     # ------------------------------------------------------------------
 
     def get_guides(self):
-        u"""读取 Guide：眼球中心 / up 参考点。"""
+        u"""读取 Guide：眼球中心 / 视线目标点。"""
 
         super().get_guides()
 
         if len(self.guide_list) != 2:
             raise RuntimeError(
-                u"眼球需要 2 个 Guide（眼球中心 / up 参考），"
+                u"眼球需要 2 个 Guide（眼球中心 / 视线目标），"
                 u"收到 {} 个".format(len(self.guide_list))
             )
 
@@ -93,9 +86,9 @@ class Eye(FaceModule):
             function="main", index=1
         ).name
 
-        self.up_name = Name(
+        self.gaze_name = Name(
             type="loc", side=self.side, part="eye",
-            function="up", index=1
+            function="gaze", index=1
         ).name
 
         self.constraint_name = Name(
@@ -115,7 +108,7 @@ class Eye(FaceModule):
         )
 
     def create_ctrls(self):
-        u"""眼球控制器（球心正前方）+ up 定位器。"""
+        u"""眼球控制器（球心）+ 视线目标定位器。"""
 
         self.ctrl = self.create_face_ctrl(
             self.ctrl_name,
@@ -125,26 +118,10 @@ class Eye(FaceModule):
             size=self.size
         )
 
-        # 把整个 zero 组前移，而不是只动 ctrl：
-        # 这样控制器层级里的偏移值保持为零。
-        eye_position = cmds.xform(
-            self.guide_list[0], query=True, worldSpace=True,
-            translation=True
-        )
-        zero_grp = self.ctrl_name.replace("ctrl_", "zero_", 1)
-        cmds.xform(
-            zero_grp,
-            worldSpace=True,
-            translation=[
-                eye_position[0] + self.forward,
-                eye_position[1],
-                eye_position[2],
-            ]
-        )
-
-        self.up_locator = cmds.spaceLocator(name=self.up_name)[0]
+        self.gaze_locator = cmds.spaceLocator(name=self.gaze_name)[0]
+        cmds.setAttr(self.gaze_locator + ".visibility", 0)
         cmds.matchTransform(
-            self.up_locator,
+            self.gaze_locator,
             self.guide_list[1],
             position=True,
             rotation=False,
@@ -156,7 +133,7 @@ class Eye(FaceModule):
     # ------------------------------------------------------------------
 
     def setup_hierarchy(self):
-        u"""关节挂 jnt 组，控制器和 up 定位器挂 ctrl 组。"""
+        u"""关节挂 jnt 组，控制器挂 ctrl 组。"""
 
         super().setup_hierarchy()
 
@@ -164,32 +141,48 @@ class Eye(FaceModule):
 
         zero_grp = self.ctrl_name.replace("ctrl_", "zero_", 1)
         cmds.parent(zero_grp, self.ctrl_master_grp, absolute=True)
-        cmds.parent(self.up_locator, self.ctrl_master_grp, absolute=True)
 
     # ------------------------------------------------------------------
     # 连接
     # ------------------------------------------------------------------
 
     def connect_rig(self):
-        u"""目标约束 + 眼皮要用的 blink / link 属性。"""
+        u"""视线目标挂到控制器下，眼球盯住它。"""
 
         self.add_lid_attrs()
+        self.attach_gaze()
 
         if cmds.objExists(self.constraint_name):
             return self.constraint_name
 
         constraint = cmds.aimConstraint(
-            self.ctrl.name,
+            self.gaze_locator,
             self.joint.name,
             aimVector=(1.0, 0.0, 0.0),
             upVector=(0.0, 1.0, 0.0),
-            worldUpType="objectrotation",
-            worldUpObject=self.up_locator,
+            worldUpType="vector",
+            worldUpVector=(0.0, 1.0, 0.0),
             maintainOffset=False,
             name=self.constraint_name
         )
 
         return constraint[0]
+
+    def attach_gaze(self):
+        u"""把 gaze 定位器挂到控制器 output 下。
+
+        parent 默认保世界位置，所以局部偏移会自动算成「眼球 → 目标」的向量；
+        拖控制器时 gaze 跟着走，眼球方向随之改变。
+        """
+
+        if not self.gaze_locator or not cmds.objExists(self.gaze_locator):
+            return
+
+        output = self.ctrl.get_output()
+        current_parent = cmds.listRelatives(self.gaze_locator, parent=True)
+
+        if not current_parent or current_parent[0] != output:
+            cmds.parent(self.gaze_locator, output)
 
     def add_lid_attrs(self):
         u"""给眼皮模块预留的两个属性。"""
@@ -208,18 +201,18 @@ class Eye(FaceModule):
     # ------------------------------------------------------------------
 
     def delete_rig(self):
-        u"""先删约束和 up 定位器，再删总组。"""
+        u"""先删约束和 gaze 定位器，再删总组。"""
 
         if cmds.objExists(self.constraint_name):
             cmds.delete(self.constraint_name)
 
-        if self.up_locator and cmds.objExists(self.up_locator):
-            cmds.delete(self.up_locator)
+        if self.gaze_locator and cmds.objExists(self.gaze_locator):
+            cmds.delete(self.gaze_locator)
 
         delete_nodes = super().delete_rig()
 
         self.joint = None
         self.ctrl = None
-        self.up_locator = None
+        self.gaze_locator = None
 
         return delete_nodes

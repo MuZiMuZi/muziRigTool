@@ -90,11 +90,12 @@ Guide 层      resources/module_guide/face_guide.ma
 
 | 对象 | 名字 | 说明 |
 |---|---|---|
-| 根关节 | `jnt_md_face_root_001` | 承载静态权重 |
-| 下巴关节 | `jnt_md_jaw_bind_001` | |
+| 根关节 | `jnt_md_face_root_001` | 建在 `ctrl_md_face_move_001` 位置 |
+| 下颌关节 | `jnt_md_jaw_bind_001` | 枢轴 = `loc_md_jaw_start_bind_001` |
+| 下巴尖 | `jnt_md_jaw_tip_001` | 末端 = `loc_md_jaw_end_bind_001` |
 | 下巴控制 | `ctrl_md_jaw_main_001` | |
-| 眼球关节 / 控制 | `jnt_lf_eye_bind_001` / `ctrl_lf_eye_main_001` | |
-| 眼球 up | `loc_lf_eye_up_001` | 目标约束的 up 参考 |
+| 眼球关节 / 控制 | `jnt_lf_eye_bind_001` / `ctrl_lf_eye_main_001` | 都在 `loc_*_eye_ball_001` |
+| 视线目标 | `loc_lf_eye_gaze_001` | 复制 `loc_lf_eye_aim_001` 位置，挂在控制器下 |
 | 眉毛形变关节 | `jnt_lf_brow_bind_001~00N` | 蒙脸，同时挂曲线 |
 | 眉毛控制 | `ctrl_lf_brow_in/mid/out_001` | 内 / 中 / 外 |
 | 眉毛曲线 CV 定位器 | `loc_lf_brow_crv_001~00N` / `loc_lf_brow_aim_001~00N` | 生成驱动 / 目标曲线 |
@@ -373,37 +374,36 @@ M10 face_tool                      （界面）
 
 ---
 
-## 十、定向与坐标（已定：脸朝 +X）
+## 十、模板与坐标（课程版 face_guide）
 
-坐标约定与 `body_guide.ma` 一致：
-
-```text
-面朝 +X      头骨从后往前 +X 延伸（head_001 → head_002 就是 +X）
-向上 +Y
-左 / 右      左手 = -Z，右手 = +Z（右手系：右 = 前 × 上 = X × Y = +Z）
-```
-
-因此：
-
-| 侧别 | 命名 | Z 坐标 |
-|---|---|---|
-| `lf` | 左 | 头部中线 - Z 方向（更负） |
-| `rt` | 右 | 头部中线 + Z 方向（更正） |
-| `md` | 中 | 中线 |
-
-**face_guide.ma 的锚点**：`jnt_md_head_guide_001 = (68.97, 93.19, -4.74)`，
-头长（到 head_002）15.5 单位，面部定位器以它为圆心布置：
+`face_guide.ma` 已替换成课程版（`face_layer_demo` 同款）：
 
 ```text
-根 / 下巴枢轴     (69.0, 93.2, -4.7) / (74.5, 88.0, -4.7)
-眼球中心          (80.0, 95.0, -4.7 ± 4.5)
-眼球 up           (80.0, 100.0, -4.7 ± 4.5)
-眉毛 9 点         沿 y≈99 的弧线，x 76→84，z 从外侧到内侧
-眉驱动 / 目标曲线 同上 +X 偏移（驱动 +0.5，目标 +6.0）
-上 / 下眼皮曲线 9 点  绕眼球中心的半圆弧（y/z 平面），x≈80.5
+grp_md_face_guide_001
+└─ ctrl_md_face_move_001                整体位移控制器（模板自带）
+   ├─ grp_md_brow_guide_001             loc_*_brow_main_bind_001 + loc_*_brow_bind_001~005 + crv_*_brow_guide_001
+   ├─ grp_md_ear_guide_001              loc_*_ear_bind_001~003
+   ├─ grp_md_eye_guide_001
+   │   ├─ grp_md_eye_bags_guide_001     眼袋曲线 + 定位器
+   │   ├─ grp_md_eye_ball_guide_001     loc_*_eye_ball_001 → iris → aim
+   │   └─ grp_md_eye_lid_guide_001      上/下眼皮曲线 + 定位器
+   ├─ grp_md_jaw_guide_001              loc_md_jaw_start_bind_001 → jaw_end
+   ├─ grp_md_lip_guide_001              上/下唇曲线 + 嘴角 / 唇部定位器
+   ├─ grp_md_nose_guide_001             口鼻 / 鼻子定位器
+   ├─ grp_md_teeth_guide_001            上/下牙
+   ├─ grp_md_tongue_guide_001           舌头 5 节
+   └─ grp_md_zygoma_guide_001           颧骨 3 点
 ```
 
-模板只给起点，真实位置以贴模型为准；左右两侧镜像生成。
+几件事：
+
+1. **朝向**：从 `loc_*_eye_ball_001` 到 `loc_*_eye_aim_001` 的方向就是脸朝前（当前模板是 +Z），
+   上方向 +Y。模块**不写死朝向**，全部按定位器的世界位置建，所以模板怎么摆都行。
+2. **位置/尺度**：模板坐标由使用者调整，脚本只读定位器名，不依赖绝对坐标。
+3. **面部各部位全部在 `ctrl_md_face_move_001` 下**：移动这个控制器能整体挪脸；
+   建绑定后各模块的 jnt / ctrl 组默认独立，后续可以挂到它下面。
+4. 模板里 `crv_*_guide_001` 是 degree 1 的引导曲线，模块生成驱动曲线时**不直接用它**，
+   只用它的 CV 位置当参考（或按定位器重建 degree 3 曲线）。
 
 ---
 
