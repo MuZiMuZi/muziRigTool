@@ -411,3 +411,105 @@ grp_md_face_guide_001
 
 1. **嘴唇曲线来源**：从模型边转换（16-16 的做法），还是手画？
 2. **BS 目标体**：已定由你雕，脚本只连驱动——确认一下就行。
+
+
+---
+
+## 十二、四步施工流程（定的总流程）
+
+### 步骤 1 · 指定模型与参数
+
+| 输入 | 说明 |
+|---|---|
+| 头部模型 | 主绑定对象 |
+| 左右眼球模型 | 眼球追踪 / 瞳孔缩放 |
+| 上下牙床模型 | 牙齿绑定 |
+| 舌头模型 | FK 链绑定 |
+| 口腔模型 | 口腔内部 |
+| 嘴唇关节点数量 | **必须是 4 的倍数**，按模型布线调整 |
+
+### 步骤 2 · 生成定位器与控制器
+
+- 嘴唇：按关节数生成嘴唇控制器 + **钉毛囊的 zip 面片**（多边形面片，follicle 布点）。
+- 眼球：按眼球模型中心生成定位器。
+- 其余定位器清单：
+
+| 部位 | 定位器 |
+|---|---|
+| brow | 1 个总控 + 4~5 个小控制器 |
+| eyelid | 上眼皮 3 个 + 下眼皮 3 个 + 内眼角 1 个 |
+| eyesoreart（眼袋） | 同眼皮：3 + 3 + 1 |
+| lip | 上唇 5 + 下唇 5 + 左右嘴角各 1 |
+| nose | 2 个总控 + 左右鼻翼 + 中心鼻头各 1 |
+| cheek | 左右各 1（也可后期用修型补） |
+| pucker | 下颚 1 个 |
+| jaw | 下巴 1 个（耳下偏后，旋转带动整个下巴） |
+| squint | 颧骨左右各 1，权重影响呈三角形 |
+| ear | FK 链，3 个关节定位器 |
+| stretch | 前侧 3 + 后侧 3（左右） |
+| tongue | 5 个关节，FK 链 |
+| teeth | 上下牙床各 1 个，单控制器直接绑模型 |
+
+### 步骤 3 · 基础控制器权重 + 两层头
+
+**将头部模型复制两份：`tweak` 头与 `stretch` 头。**
+
+```text
+tweak 头  ← 全部基础控制器（关节 / 次级控制器）驱动
+   │ 作为 blendshape 目标
+   ▼
+stretch 头 ← 承担大形变（zip 嘴、下巴跟随、颧骨权重）
+```
+
+tweak 头要达到的功能：
+
+- 眉毛单根 / 整体运动，**转单侧眉毛不影响对侧**；
+- 鼻子总控上移时整体放大缩小（喘气）；
+- 上下唇 tweak 权重都动时**闭合不分开**；
+- 眼睛跟随控制器（目标约束），并支持瞳孔缩放；
+- 眼睛能的话也做拉链嘴。
+
+stretch 头的职责：
+
+- 嘴巴张开的 zip（拉链嘴）；
+- 下巴打开的跟随；
+- 颧骨权重。
+
+### 步骤 4 · 额外 BS 修型
+
+| 部位 | 形状 |
+|---|---|
+| brow | up / down / squeeze |
+| eye | upperLidWide / lowerLidWide / upperLidClose / lowerLidClose / upperLidMid / lowerLidMid |
+| nose | sneer（冷笑） |
+| cheek | up / dn / out |
+| squint | 眯眼 |
+| mouth | smile / frown / narrow / mouthStretch … 共 9 个，覆盖不同宽度嘴唇 |
+| lip | rollOut / rollIn |
+| mouthSideLeft | 往一侧歪嘴 |
+| neck | 脖子青筋冒起 |
+| throat | 吞咽喉咙 |
+| mouthPout | 下唇往外突 |
+| mouthLeft | 下唇往另一侧 |
+| chinClench | 吃惊 |
+| eyepand | = browUp + lidWide |
+| crunch | = browDown + squint + sneer + upperLidClose |
+
+组合形状（eyepand / crunch）不单独雕，按上面的公式叠权重。
+
+---
+
+## 十三、现有进度对照
+
+| 项 | 状态 |
+|---|---|
+| face_guide.ma（课程版定位器） | 已有 |
+| Jaw（下颌 + 下巴尖） | M1 完成 |
+| Eye（目标约束 + blink/link） | M1 完成 |
+| Brow（5 关节 + 内/中/外三段） | B 方案完成基础 |
+| Brow 表情面板（抬眉/压眉） | 初版完成 |
+| 控制器钉参考面（BS 跟随） | 原型验证通过（uvPin） |
+| 两层头（tweak / stretch） | 未做 |
+| zip 面片 + 毛囊 | 未做 |
+| 其余部位（lid / lip / nose / cheek / pucker / squint / ear / stretch / tongue / teeth） | 未做 |
+| BS 修型清单 | 未做 |

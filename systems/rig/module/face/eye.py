@@ -37,7 +37,8 @@ class Eye(FaceModule):
     use_pivot_guides = True
 
     def __init__(self, side="lf", guides=None, size=8.0, color=6,
-                 shape="arrow_1_thinbev", constraints=True, **kwargs):
+                 shape="arrow_1_thinbev", axis="Z+", flip=True,
+                 constraints=True, **kwargs):
         super().__init__(
             module="eye",
             side=side,
@@ -46,6 +47,10 @@ class Eye(FaceModule):
         )
 
         self.size = size
+        self.axis = axis
+
+        # 箭头默认朝向和视线相反，flip 把它转 180°（只动形状，不动变换）
+        self.flip = flip
         self.constraints = constraints
         self.color = color
         self.shape = shape
@@ -121,8 +126,12 @@ class Eye(FaceModule):
             target=self.guide_list[0],
             shape=self.shape,
             color=self.color,
-            size=self.size
+            size=self.size,
+            axis=self.axis
         )
+
+        if self.flip:
+            self.flip_ctrl_shape()
 
         self.gaze_locator = cmds.spaceLocator(name=self.gaze_name)[0]
         cmds.setAttr(self.gaze_locator + ".visibility", 0)
@@ -130,6 +139,23 @@ class Eye(FaceModule):
             self.guide_list[1], self.gaze_locator,
             position=True, rotation=False
         )
+
+    def flip_ctrl_shape(self):
+        u"""把控制器形状绕 Y 轴转 180°。
+
+        只改曲线 CV，不动 transform，所以枢轴和位置都不变。
+        """
+
+        for shape in self.ctrl.get_shapes():
+            for cv in cmds.ls(shape + ".cv[*]", flatten=True) or []:
+                position = cmds.xform(
+                    cv, query=True, translation=True, objectSpace=True
+                )
+                cmds.xform(
+                    cv,
+                    translation=[-position[0], position[1], -position[2]],
+                    objectSpace=True
+                )
 
     # ------------------------------------------------------------------
     # 层级

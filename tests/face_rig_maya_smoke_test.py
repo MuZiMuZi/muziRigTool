@@ -40,6 +40,7 @@ from maya import cmds  # noqa: E402
 from muziRigTool.systems.rig.guide import Guide  # noqa: E402
 from muziRigTool.systems.rig.module.face.jaw import Jaw  # noqa: E402
 from muziRigTool.systems.rig.module.face.eye import Eye  # noqa: E402
+from muziRigTool.systems.rig.module.face.brow import Brow  # noqa: E402
 
 
 SIDE_LIST = ("lf", "rt")
@@ -331,6 +332,85 @@ def check_eye(guide):
     return eye
 
 
+def check_brow(guide):
+    u"""眉毛：关节位置 + 三段控制器权重。"""
+
+    brow = Brow(
+        side="lf",
+        guides=guide.get_face_brow_bind("lf"),
+        main_guide=guide.get_face_brow_main("lf"),
+        panel=True,
+    )
+    brow.build_rig()
+    brow.connect_rig()
+
+    names = (
+        ["jnt_lf_brow_root_001"]
+        + brow.joint_names
+        + brow.ctrl_names
+        + ["ctrl_lf_brow_expr_raise_001", "ctrl_lf_brow_expr_lower_001"]
+    )
+
+    for node in names:
+        check(cmds.objExists(node), u"眉毛缺少节点：{}".format(node))
+
+    for joint, locator in zip(
+        brow.joint_names, guide.get_face_brow_bind("lf")
+    ):
+        offset = distance(world_position(joint), guide_world(locator))
+        check(
+            offset < 1e-4,
+            u"{} 与 {} 偏移 {}".format(joint, locator, offset)
+        )
+
+    before = [world_position(name) for name in brow.joint_names]
+
+    inner = world_position(brow.ctrl_names[0])
+    cmds.xform(
+        brow.ctrl_names[0], worldSpace=True,
+        translation=[inner[0], inner[1] + 20.0, inner[2]]
+    )
+
+    after = [world_position(name) for name in brow.joint_names]
+    deltas = [after[i][1] - before[i][1] for i in range(len(before))]
+
+    check(abs(deltas[0] - 20.0) < 1e-3, u"关节 1 应跟随 20：{}".format(deltas[0]))
+    check(abs(deltas[1] - 10.0) < 1e-3, u"关节 2 应跟随 10：{}".format(deltas[1]))
+    check(abs(deltas[2]) < 1e-3, u"关节 3 不该动：{}".format(deltas[2]))
+
+    # 表情面板：抬眉 +10，五个关节按 1 / 0.7 / 0.45 的比例上移
+    cmds.xform(
+        brow.ctrl_names[0], worldSpace=True,
+        translation=[inner[0], inner[1] - 20.0, inner[2]]
+    )
+
+    baseline = [world_position(name) for name in brow.joint_names]
+    panel = world_position("ctrl_lf_brow_expr_raise_001")
+    cmds.xform(
+        "ctrl_lf_brow_expr_raise_001", worldSpace=True,
+        translation=[panel[0], panel[1] + 10.0, panel[2]]
+    )
+
+    lifted = [world_position(name) for name in brow.joint_names]
+    lifted_deltas = [lifted[i][1] - baseline[i][1] for i in range(5)]
+
+    check(
+        abs(lifted_deltas[0] - 10.0) < 1e-2,
+        u"抬眉时关节 1 应上移 10：{}".format(lifted_deltas[0])
+    )
+    check(
+        abs(lifted_deltas[4] - 4.5) < 1e-2,
+        u"抬眉时关节 5 应上移 4.5：{}".format(lifted_deltas[4])
+    )
+
+    brow.delete_rig()
+
+    for node in names:
+        check(not cmds.objExists(node), u"删除后仍有残留：{}".format(node))
+
+    return brow
+
+
 def run():
     u"""跑全部检查。"""
 
@@ -342,10 +422,12 @@ def run():
     check_template(guide)
     check_jaw(guide)
     check_eye(guide)
+    check_brow(guide)
 
     print(u"PASS: face_guide 模板读取（课程版命名）")
     print(u"PASS: Jaw 结构 / 旋转补位移 / 重建 / 删除")
     print(u"PASS: Eye 结构 / 视线跟随 / 删除")
+    print(u"PASS: Brow 关节位置 / 三段权重 / 删除")
 
     return True
 
