@@ -163,8 +163,17 @@ class FaceModule(RigModule):
 
         loc_driver = cmds.spaceLocator(name=driver)[0]
         loc_driven = cmds.spaceLocator(name=driven)[0]
-        cmds.parent(loc_driver, zero_driver)
-        cmds.parent(loc_driven, zero_driven)
+
+        # parent 默认会保世界位置，locator 建在原点后挂到 zero 组下
+        # 会留下一个反向偏移；这里把局部变换清零，让它和 zero 重合。
+        for locator, zero in (
+            (loc_driver, zero_driver),
+            (loc_driven, zero_driven),
+        ):
+            cmds.parent(locator, zero)
+            cmds.setAttr(locator + ".translate", 0.0, 0.0, 0.0)
+            cmds.setAttr(locator + ".rotate", 0.0, 0.0, 0.0)
+            cmds.setAttr(locator + ".scale", 1.0, 1.0, 1.0)
 
         cmds.parentConstraint(
             ctrl.get_output(), loc_driver, maintainOffset=True

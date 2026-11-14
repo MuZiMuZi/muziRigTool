@@ -148,6 +148,18 @@ def check_jaw(guide):
             u"{} 没有对齐控制器，偏差 {}".format(zero, distance)
         )
 
+    # locator 也必须和 zero 组重合（曾经留在原点）
+    for locator in ("loc_md_jaw_driver_001", "loc_md_jaw_driven_001"):
+        locator_position = world_position(locator)
+        distance = max(
+            abs(locator_position[index] - ctrl_position[index])
+            for index in range(3)
+        )
+        check(
+            distance < 1e-4,
+            u"{} 没有对齐控制器，偏差 {}".format(locator, distance)
+        )
+
     # 控制器 → connect 组的系数
     cmds.setAttr("ctrl_md_jaw_main_001.rotateX", -20.0)
 
