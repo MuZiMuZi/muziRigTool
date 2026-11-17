@@ -140,8 +140,13 @@ eight_direction_parts = ("shoulder", "arm", "hip", "thigh")
 # 四肢单轴多角度（前弯）：肘 / 膝。属性 F45 / F90 / F120，独立叠加。
 multi_angle_parts = {
     "elbow": {"axis": "rotateZ", "sign": 1, "angles": (45, 90, 120)},
-    # 实测 FKKnee_L 弯曲时 Knee_L.rotateZ 为负值（-57.67），所以 sign = -1
-    "knee": {"axis": "rotateZ", "sign": -1, "angles": (45, 90, 120)},
+    # 实测 FKKnee_L 弯曲时 Knee_L.rotateZ 为负值（-84.45），是往后屈伸 → B45/B90/B120
+    "knee": {
+        "axis": "rotateZ",
+        "sign": -1,
+        "angles": (45, 90, 120),
+        "letter": "B",
+    },
 }
 
 # 单轴部位用骨骼链向量夹角驱动，IK / FK 都有效。
@@ -1790,6 +1795,7 @@ def _build_multi_angle(joint, side, part, category, neutral, neutral_inverse):
 
     spec = multi_angle_parts[part]
     axis = spec["axis"]
+    letter = spec.get("letter", "F")
     part_key = "{}_{}".format(side, part)
 
     neutral = _read_joint_neutral(joint, (axis,))
@@ -1821,7 +1827,7 @@ def _build_multi_angle(joint, side, part, category, neutral, neutral_inverse):
         attributes = {}
 
         for angle in spec["angles"]:
-            suffix = "F" + str(int(angle))
+            suffix = letter + str(int(angle))
             attribute = part_key + "_" + suffix
             _add_weight_attr(group, attribute)
             added_attrs.append(attribute)
@@ -1847,7 +1853,7 @@ def _build_multi_angle(joint, side, part, category, neutral, neutral_inverse):
             )
 
         for index, angle in enumerate(angles):
-            suffix = "F" + str(angle)
+            suffix = letter + str(angle)
 
             if index == 0 and len(angles) > 1:
                 # 第一段过目标后交棒；后续段达到后保持

@@ -750,6 +750,16 @@ def check_build_all(joints):
         "lf_hip_D45", node=leg_group, exists=True
     ), u"大腿不该有 D45"
 
+    # 膝盖：负向屈伸 → B45 / B90 / B120
+    for suffix in ("B45", "B90", "B120"):
+        assert cmds.attributeQuery(
+            "lf_knee_" + suffix, node=leg_group, exists=True
+        ), u"膝盖缺少属性：{}".format(suffix)
+
+    assert not cmds.attributeQuery(
+        "lf_knee_F45", node=leg_group, exists=True
+    ), u"膝盖不应再用 F45"
+
     print(u"[ok] 一键生成全部：{}".format(part_keys))
 
 
