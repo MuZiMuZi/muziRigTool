@@ -39,8 +39,8 @@ def build_scene():
     for name, position in (
             ("Shoulder_L", (0, 0, 0)),
             ("Shoulder_R", (4, 0, 0)),
-            ("L_Thigh", (0, 4, 0)),
-            ("R_Thigh", (0, 8, 0)),
+            ("Hip1_L", (0, 4, 0)),
+            ("Hip1_R", (0, 8, 0)),
             ("Elbow_R", (0, 12, 0)),
             ("Knee_L", (0, 16, 0)),
             ("Wrist_R", (0, 20, 0)),

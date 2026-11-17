@@ -145,8 +145,8 @@ def get_rbf_part_specs():
             "category": "arm",
             "samples": _shoulder_samples(),
         }
-        # ADV 大腿关节实际命名：L_Thigh / R_Thigh
-        specs[("L_Thigh" if suffix == "L" else "R_Thigh")] = {
+        # ADV 大腿驱动关节：Hip1_L / Hip1_R（L_Thigh 是静态皮肤关节）
+        specs[("Hip1_L" if suffix == "L" else "Hip1_R")] = {
             "side": side,
             "part": "hip",
             "category": "leg",
@@ -208,10 +208,10 @@ def get_rbf_part_specs():
         "samples": _spine_samples(45, 45),
     }
 
-    if cmds.objExists("L_Thigh") and cmds.objExists("R_Thigh"):
+    if cmds.objExists("Hip1_L") and cmds.objExists("Hip1_R"):
         specs["md_legs"] = {
-            "joint": "L_Thigh",
-            "joints": ["L_Thigh", "R_Thigh"],
+            "joint": "Hip1_L",
+            "joints": ["Hip1_L", "Hip1_R"],
             "side": "md",
             "part": "legs",
             "category": "leg",

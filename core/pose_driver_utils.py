@@ -247,11 +247,11 @@ adv_joint_map = {
     "Wrist_R": ("rt", "wrist", "arm"),
     "Hand_L": ("lf", "hand", "arm"),
     "Hand_R": ("rt", "hand", "arm"),
+    "Hip1_L": ("lf", "hip", "leg"),
+    "Hip1_R": ("rt", "hip", "leg"),
+    # 兼容旧命名：L_Thigh / R_Thigh 是静态皮肤关节，不再作为驱动源
     "Hip_L": ("lf", "hip", "leg"),
     "Hip_R": ("rt", "hip", "leg"),
-    # ADV 大腿关节实际命名：L_Thigh / R_Thigh（前缀式）
-    "L_Thigh": ("lf", "hip", "leg"),
-    "R_Thigh": ("rt", "hip", "leg"),
     "Knee_L": ("lf", "knee", "leg"),
     "Knee_R": ("rt", "knee", "leg"),
     "Ankle_L": ("lf", "ankle", "leg"),
@@ -1488,8 +1488,8 @@ def _build_legs():
     """
 
     part_key = "md_legs"
-    left_joint = "L_Thigh"
-    right_joint = "R_Thigh"
+    left_joint = "Hip1_L"
+    right_joint = "Hip1_R"
 
     for name in (left_joint, right_joint):
         if not cmds.objExists(name):
@@ -2271,7 +2271,7 @@ def find_supported_joints():
             "category": category,
         })
 
-    if cmds.objExists("L_Thigh") and cmds.objExists("R_Thigh"):
+    if cmds.objExists("Hip1_L") and cmds.objExists("Hip1_R"):
         found.append({
             "joint": "md_legs",
             "short": "md_legs",

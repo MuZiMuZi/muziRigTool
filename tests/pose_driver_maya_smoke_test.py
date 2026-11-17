@@ -91,7 +91,7 @@ def build_scene():
     cmds.createNode("transform", name="FKWrist_R")
 
     cmds.select(clear=True)
-    hip_l = cmds.joint(name="L_Thigh", position=(-4, 0, 0))
+    hip_l = cmds.joint(name="Hip1_L", position=(-4, 0, 0))
 
     cmds.select(clear=True)
     knee_l = cmds.joint(name="Knee_L", position=(-4, 4, 0))
@@ -102,7 +102,7 @@ def build_scene():
     cmds.parent(ankle_l, knee_l, absolute=True)
 
     cmds.select(clear=True)
-    hip_r = cmds.joint(name="R_Thigh", position=(8, 0, 0))
+    hip_r = cmds.joint(name="Hip1_R", position=(8, 0, 0))
 
     cmds.select(clear=True)
     spine1 = cmds.joint(name="Spine1_M", position=(0, 12, 0))
@@ -142,7 +142,7 @@ def check_find_supported():
     found = [item["short"] for item in items]
 
     for name in (
-            "Shoulder_L", "Shoulder_R", "L_Thigh", "R_Thigh",
+            "Shoulder_L", "Shoulder_R", "Hip1_L", "Hip1_R",
             "Clavicle_R", "Scapula_R", "Elbow_R", "Knee_L", "Wrist_R", "Ankle_L",
             "IndexFinger1_R", "Spine1_M",
     ):
@@ -574,8 +574,8 @@ def check_legs(joints):
             u"缺少双腿属性：{}".format(suffix)
         )
 
-    left = "L_Thigh"
-    right = "R_Thigh"
+    left = "Hip1_L"
+    right = "Hip1_R"
 
     cmds.setAttr(left + ".rotateY", -90.0)
     cmds.setAttr(right + ".rotateY", -90.0)
@@ -766,7 +766,7 @@ def check_skirt():
         "skirt_lf_hip_F90", node=group, exists=True
     ), u"裙组没有镜像腿部属性"
 
-    hip = "L_Thigh"
+    hip = "Hip1_L"
     cmds.setAttr(hip + ".rotateZ", 90.0)
 
     assert abs(
