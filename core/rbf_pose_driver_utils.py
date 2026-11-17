@@ -145,7 +145,8 @@ def get_rbf_part_specs():
             "category": "arm",
             "samples": _shoulder_samples(),
         }
-        specs["Hip_" + suffix] = {
+        # ADV 大腿关节实际命名：L_Thigh / R_Thigh
+        specs[("L_Thigh" if suffix == "L" else "R_Thigh")] = {
             "side": side,
             "part": "hip",
             "category": "leg",
@@ -207,6 +208,23 @@ def get_rbf_part_specs():
         "samples": _spine_samples(45, 45),
     }
 
+    if cmds.objExists("L_Thigh") and cmds.objExists("R_Thigh"):
+        specs["md_legs"] = {
+            "joint": "L_Thigh",
+            "joints": ["L_Thigh", "R_Thigh"],
+            "side": "md",
+            "part": "legs",
+            "category": "leg",
+            "samples": [
+                ("U90", (0.0, -90.0, 0.0, 0.0, -90.0, 0.0)),
+                ("F90", (0.0, 0.0, 90.0, 0.0, 0.0, 90.0)),
+                ("B70", (0.0, 0.0, -70.0, 0.0, 0.0, -70.0)),
+                ("F45U90", (0.0, -90.0, 45.0, 0.0, -90.0, 45.0)),
+            ],
+            # 6 维输入，核宽要比单关节大，否则矩阵病态
+            "sigma": 45.0,
+        }
+
     return specs
 
 
@@ -219,16 +237,20 @@ def find_supported_rbf_joints():
 
     found = []
 
-    for joint, spec in get_rbf_part_specs().items():
+    for key, spec in get_rbf_part_specs().items():
+        joint = spec.get("joint", key)
+
         if not cmds.objExists(joint):
             continue
 
         found.append({
             "joint": joint,
+            "joints": list(spec.get("joints") or [joint]),
             "side": spec["side"],
             "part": spec["part"],
             "category": spec["category"],
             "samples": list(spec["samples"]),
+            "sigma": spec.get("sigma"),
         })
 
     found.sort(key=lambda item: (item["category"], item["side"], item["part"]))
@@ -357,9 +379,18 @@ def build_rbf_part(item):
     part = item["part"]
     category = item["category"]
     samples = item["samples"]
+    joints = list(item.get("joints") or [joint])
+    sigma = float(item.get("sigma") or rbf_sigma)
 
-    if not cmds.objExists(joint):
-        raise RuntimeError(u"缺少关节：{}".format(joint))
+    for name in joints:
+        if not cmds.objExists(name):
+            raise RuntimeError(u"缺少关节：{}".format(name))
+
+    input_plugs = [
+        name + ".rotate" + axis
+        for name in joints
+        for axis in ("X", "Y", "Z")
+    ]
 
     part_key = "{}_{}".format(side, part)
     group = get_or_create_group(category)
@@ -369,7 +400,7 @@ def build_rbf_part(item):
     if part_key in config:
         _remove_part(group, config, part_key)
 
-    centers = [[0.0, 0.0, 0.0]]
+    centers = [[0.0] * len(input_plugs)]
     output_names = []
 
     for suffix, values in samples:
@@ -377,7 +408,8 @@ def build_rbf_part(item):
         output_names.append(part_key + "_" + suffix)
 
     coefficients = rbf_weight_math.train_coefficients(
-        centers, 0, rbf_sigma, rbf_scales
+        centers, 0, sigma, [1.0] * len(input_plugs),
+        regularization=1e-8
     )
 
     created_nodes = []
@@ -390,12 +422,14 @@ def build_rbf_part(item):
         )
         created_nodes.append(expression)
 
-        input_attrs = ("rx", "ry", "rz")
+        input_attrs = [
+            "r{}".format(index) for index in range(len(input_plugs))
+        ]
 
         for index, attribute in enumerate(input_attrs):
             cmds.addAttr(expression, longName=attribute, attributeType="double")
             cmds.connectAttr(
-                joint + ".rotate" + "XYZ"[index],
+                input_plugs[index],
                 expression + "." + attribute,
             )
 
@@ -418,9 +452,9 @@ def build_rbf_part(item):
         for sample_index, center in enumerate(centers):
             terms = []
 
-            for index in range(3):
+            for index in range(len(input_plugs)):
                 delta = "(($x{0} - {1}) / {2})".format(
-                    index, _number(center[index]), _number(rbf_scales[index])
+                    index, _number(center[index]), _number(rbf_scales[0])
                 )
                 terms.append("({0} * {0})".format(delta))
 
@@ -428,7 +462,7 @@ def build_rbf_part(item):
                 "float $k{0} = exp(-0.5 * ({1}) / {2});".format(
                     sample_index,
                     " + ".join(terms),
-                    _number(rbf_sigma ** 2),
+                    _number(sigma ** 2),
                 )
             )
 

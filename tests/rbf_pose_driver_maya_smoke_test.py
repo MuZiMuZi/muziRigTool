@@ -39,8 +39,8 @@ def build_scene():
     for name, position in (
             ("Shoulder_L", (0, 0, 0)),
             ("Shoulder_R", (4, 0, 0)),
-            ("Hip_L", (0, 4, 0)),
-            ("Hip_R", (0, 8, 0)),
+            ("L_Thigh", (0, 4, 0)),
+            ("R_Thigh", (0, 8, 0)),
             ("Elbow_R", (0, 12, 0)),
             ("Knee_L", (0, 16, 0)),
             ("Wrist_R", (0, 20, 0)),
@@ -90,7 +90,7 @@ def check_build(joints):
                 handle.write("{}: {}\n".format(name, error))
 
     assert not errors, u"生成失败：{}".format(errors)
-    assert len(results) == 12, u"应该生成 12 个，实际 {}".format(len(results))
+    assert len(results) == 13, u"应该生成 13 个，实际 {}".format(len(results))
 
     part_keys = sorted(result["part_key"] for result in results)
 
@@ -100,6 +100,7 @@ def check_build(joints):
         "lf_knee",
         "lf_shoulder",
         "md_chest",
+        "md_legs",
         "md_spine1",
         "md_spine2",
         "rt_clavicle",
@@ -169,7 +170,7 @@ def check_delete():
 
     removed = rbf_pose_driver_utils.delete_all_rbf_parts()
 
-    assert removed >= 12, u"删除数量不对：{}".format(removed)
+    assert removed >= 13, u"删除数量不对：{}".format(removed)
 
     group = "grp_md_arm_pose_001"
 
