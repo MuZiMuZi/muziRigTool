@@ -597,7 +597,7 @@ def delete_rbf_part(part_key):
 
 
 def delete_all_rbf_parts():
-    u"""删除所有 RBF 部位，组保留。
+    u"""删除所有 RBF 部位，组也一起删。
 
     Returns:
         int: 删除数量。
@@ -618,6 +618,9 @@ def delete_all_rbf_parts():
             removed += 1
 
         _write_group_config(group, config)
+
+    if cmds.objExists(rbf_master_group):
+        cmds.delete(rbf_master_group)
 
     return removed
 

@@ -2578,6 +2578,10 @@ def delete_all_parts():
 
     _clear_skirt_links()
 
+    # 连组一起删：总组删掉后，四个汇总组和裙子组会跟着消失
+    if cmds.objExists(master_group_name):
+        cmds.delete(master_group_name)
+
     return removed
 
 

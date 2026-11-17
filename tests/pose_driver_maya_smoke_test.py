@@ -807,20 +807,21 @@ def check_skirt():
 
 
 def check_delete_all():
-    u"""删除全部后组还在，部位清空。"""
+    u"""删除全部后连组一起清掉。"""
 
     removed = pose_driver_utils.delete_all_parts()
 
-    assert removed >= 12, u"删除数量不对：{}".format(removed)
+    assert removed >= 14, u"删除数量不对：{}".format(removed)
+
+    assert not cmds.objExists(
+        pose_driver_utils.master_group_name
+    ), u"总组没有被删掉"
 
     for category in ("arm", "leg"):
         group = pose_driver_utils.get_group_name(category)
-        assert cmds.objExists(group), u"组被删掉了：{}".format(group)
-        assert pose_driver_utils.get_part_list(group) == [], (
-            u"组上还有部位：{}".format(group)
-        )
+        assert not cmds.objExists(group), u"组没有被删掉：{}".format(group)
 
-    print(u"[ok] 删除全部：{} 个部位，组保留".format(removed))
+    print(u"[ok] 删除全部：{} 个部位，组也一起删".format(removed))
 
 
 def check_bad_input(joints):
