@@ -140,7 +140,8 @@ eight_direction_parts = ("shoulder", "arm", "hip", "thigh")
 # 四肢单轴多角度（前弯）：肘 / 膝。属性 F45 / F90 / F120，独立叠加。
 multi_angle_parts = {
     "elbow": {"axis": "rotateZ", "sign": 1, "angles": (45, 90, 120)},
-    "knee": {"axis": "rotateZ", "sign": 1, "angles": (45, 90, 120)},
+    # 实测 FKKnee_L 弯曲时 Knee_L.rotateZ 为负值（-57.67），所以 sign = -1
+    "knee": {"axis": "rotateZ", "sign": -1, "angles": (45, 90, 120)},
 }
 
 # 单轴部位用骨骼链向量夹角驱动，IK / FK 都有效。

@@ -70,13 +70,13 @@ def _hip_samples():
     ]
 
 
-def _multi_samples(axis, angles):
-    u"""单轴多角度样本。"""
+def _multi_samples(axis, angles, sign=1):
+    u"""单轴多角度样本；sign 用于膝盖这类负向弯曲。"""
 
     index = {"rotateX": 0, "rotateY": 1, "rotateZ": 2}[axis]
     return [
         (_suffix("F", angle), tuple(
-            float(angle) if i == index else 0.0 for i in range(3)
+            float(angle) * sign if i == index else 0.0 for i in range(3)
         ))
         for angle in angles
     ]
@@ -161,7 +161,7 @@ def get_rbf_part_specs():
             "side": side,
             "part": "knee",
             "category": "leg",
-            "samples": _multi_samples("rotateZ", (45, 90, 120)),
+            "samples": _multi_samples("rotateZ", (45, 90, 120), sign=-1),
         }
         specs["Wrist_" + suffix] = {
             "side": side,
