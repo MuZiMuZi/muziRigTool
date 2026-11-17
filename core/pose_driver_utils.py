@@ -2714,6 +2714,132 @@ def _find_blendshape_target(blendshapes, target_name):
     return None
 
 
+def _invert_mesh_shape(base_mesh, source_mesh, name):
+    u"""求 source 相对 base 的逆变形：target = 2 × base − source。
+
+    Maya 2023 没有 cmds.invertShape，这里按顶点镜像自己算。
+    """
+
+    base_vertices = cmds.ls(base_mesh + ".vtx[*]", flatten=True) or []
+    source_vertices = cmds.ls(source_mesh + ".vtx[*]", flatten=True) or []
+
+    if len(base_vertices) != len(source_vertices):
+        raise RuntimeError(u"两个 mesh 顶点数不一致，无法求逆")
+
+    from maya.api import OpenMaya
+
+    def mesh_shape(name):
+        shapes = cmds.listRelatives(name, shapes=True) or []
+        shapes = [shape for shape in shapes if cmds.objectType(shape) == "mesh"]
+
+        if not shapes:
+            raise RuntimeError(u"{} 不是 mesh".format(name))
+
+        return shapes[0]
+
+    def read_points(mesh):
+        selection = OpenMaya.MSelectionList()
+        selection.add(mesh_shape(mesh))
+        fn_mesh = OpenMaya.MFnMesh(selection.getDependNode(0))
+
+        return fn_mesh.getPoints(OpenMaya.MSpace.kObject)
+
+    base_points = read_points(base_mesh)
+    source_points = read_points(source_mesh)
+
+    inverted_points = OpenMaya.MPointArray()
+
+    for index in range(len(base_points)):
+        inverted_points.append(OpenMaya.MPoint(
+            2.0 * base_points[index].x - source_points[index].x,
+            2.0 * base_points[index].y - source_points[index].y,
+            2.0 * base_points[index].z - source_points[index].z,
+        ))
+
+    duplicated = cmds.duplicate(source_mesh, name=name, rr=True)[0]
+
+    selection = OpenMaya.MSelectionList()
+    selection.add(mesh_shape(duplicated))
+    fn_mesh = OpenMaya.MFnMesh(selection.getDependNode(0))
+    fn_mesh.setPoints(inverted_points)
+
+    return duplicated
+
+
+def add_inverse_shape_target(bsname, source_mesh, base_mesh, target_name=None):
+    u"""给 blendShape 添加一个 inverse shape target。
+
+    与公司旧工具的区别：添加前会把 BS 里已有 target 的权重临时清零。
+    普通 BS 是叠加式的，已有修正非 0 时 invertShape 会把旧修正算进去，
+    手肘 F120 这类已有修型最满的姿态就会出错。
+
+    Args:
+        bsname (str): blendShape 节点。
+        source_mesh (str): 传递用的 mesh（duplicate 后参与 invertShape）。
+        base_mesh (str): 被传递的 mesh（BS 作用的目标）。
+        target_name (str): 可选，target 名称。
+
+    Returns:
+        str: 新 target 的 weight 属性名。
+    """
+
+    if not cmds.objExists(bsname):
+        raise RuntimeError(u"场景里不存在 BS 节点：{}".format(bsname))
+
+    if cmds.objectType(bsname) != "blendShape":
+        raise RuntimeError(u"{} 不是 blendShape 节点".format(bsname))
+
+    if not cmds.objExists(source_mesh) or not cmds.objExists(base_mesh):
+        raise RuntimeError(u"传递 mesh 或目标 mesh 不存在")
+
+    weights = cmds.listAttr(bsname + ".weight", multi=True) or []
+    saved = {}
+
+    for attribute in weights:
+        plug = bsname + "." + attribute
+        saved[plug] = cmds.getAttr(plug)
+
+    envelope = cmds.getAttr(bsname + ".envelope")
+
+    cmds.setAttr(bsname + ".envelope", 0)
+
+    # 关键：已有 target 的权重也要清 0，否则 invertShape 会把旧修正算进去
+    for plug in saved:
+        cmds.setAttr(plug, 0.0)
+
+    duplicated = None
+    inverted = None
+
+    try:
+        duplicated = cmds.duplicate(source_mesh, rr=True)[0]
+        inverted = _invert_mesh_shape(
+            base_mesh, duplicated, "inverse_" + str(target_name or "target")
+        )
+
+        index = len(weights)
+
+        cmds.blendShape(
+            bsname, edit=True, t=(base_mesh, index, inverted, 1.0)
+        )
+
+        if target_name:
+            cmds.aliasAttr(
+                target_name, bsname + ".weight[{}]".format(index)
+            )
+
+    finally:
+        cmds.setAttr(bsname + ".envelope", envelope)
+
+        for plug, value in saved.items():
+            cmds.setAttr(plug, value)
+
+        for node in (duplicated, inverted):
+            if node and cmds.objExists(node):
+                cmds.delete(node)
+
+    return bsname + ".weight[{}]".format(len(weights))
+
+
 def delete_all_parts():
     u"""删除四个汇总组上所有部位，组保留。
 

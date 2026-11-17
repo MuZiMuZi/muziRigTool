@@ -49,14 +49,25 @@ class PoseDriverTool(QtWidgets.QDialog):
         connect_button = QtWidgets.QPushButton(u"连接 BS")
         connect_button.clicked.connect(self.connect_blendshapes)
 
+        self.blendshape_field = QtWidgets.QLineEdit()
+        self.blendshape_field.setPlaceholderText(u"blendShape 节点名")
+
+        add_target_button = QtWidgets.QPushButton(u"加 inverse target")
+        add_target_button.clicked.connect(self.add_inverse_target)
+
         buttons = QtWidgets.QHBoxLayout()
         buttons.addWidget(build_button)
         buttons.addWidget(delete_button)
         buttons.addWidget(connect_button)
 
+        target_row = QtWidgets.QHBoxLayout()
+        target_row.addWidget(self.blendshape_field)
+        target_row.addWidget(add_target_button)
+
         layout = QtWidgets.QVBoxLayout(self)
         layout.addWidget(hint)
         layout.addLayout(buttons)
+        layout.addLayout(target_row)
         layout.addWidget(self.status_label)
 
     def build_all(self):
@@ -109,6 +120,32 @@ class PoseDriverTool(QtWidgets.QDialog):
             message += u"，{} 个没匹配到 target".format(len(missing))
 
         self.status_label.setText(message)
+
+    def add_inverse_target(self):
+        u"""给 BS 加一个 inverse shape target（清权重后再算）。"""
+
+        selection = cmds.ls(selection=True) or []
+
+        if len(selection) != 2:
+            self.status_label.setText(u"先选中两个 mesh（传递 / 目标）")
+            return
+
+        bsname = self.blendshape_field.text().strip()
+
+        if not bsname:
+            self.status_label.setText(u"先填 blendShape 节点名")
+            return
+
+        try:
+            plug = pose_driver_utils.add_inverse_shape_target(
+                bsname, selection[0], selection[1]
+            )
+        except Exception as error:
+            cmds.warning(str(error))
+            self.status_label.setText(u"添加失败：{}".format(error))
+            return
+
+        self.status_label.setText(u"已添加 target：{}".format(plug))
 
 
 _window = None
