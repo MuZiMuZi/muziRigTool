@@ -2933,7 +2933,10 @@ def _build_delta(part_key, role, joint, axis, neutral_inverse, nodes):
 
 
 def _build_gate(part_key, role, delta_plug, sign, angle, nodes):
-    u"""建单个方向门：smoothstep(clamp(sign * delta / angle))。"""
+    u"""建单个方向门：clamp(sign * delta / angle, 0, 1) 线性 0-1。
+
+    平滑交给后面的 driven key 曲线，绑定师可以自己调形状。
+    """
 
     scale = _create(
         "mult_" + part_key + "_" + role + "Scale_001",
@@ -2952,39 +2955,7 @@ def _build_gate(part_key, role, delta_plug, sign, angle, nodes):
     cmds.setAttr(clamp_node + ".maxR", 1.0)
     cmds.connectAttr(scale + ".output", clamp_node + ".inputR")
 
-    square = _create(
-        "mult_" + part_key + "_" + role + "Square_001",
-        "multDoubleLinear",
-        nodes,
-    )
-    cmds.connectAttr(clamp_node + ".outputR", square + ".input1")
-    cmds.connectAttr(clamp_node + ".outputR", square + ".input2")
-
-    neg_two = _create(
-        "mult_" + part_key + "_" + role + "Neg2_001",
-        "multDoubleLinear",
-        nodes,
-    )
-    cmds.connectAttr(clamp_node + ".outputR", neg_two + ".input1")
-    cmds.setAttr(neg_two + ".input2", -2.0)
-
-    offset = _create(
-        "add_" + part_key + "_" + role + "Offset_001",
-        "addDoubleLinear",
-        nodes,
-    )
-    cmds.setAttr(offset + ".input1", 3.0)
-    cmds.connectAttr(neg_two + ".output", offset + ".input2")
-
-    smooth = _create(
-        "mult_" + part_key + "_" + role + "Smooth_001",
-        "multDoubleLinear",
-        nodes,
-    )
-    cmds.connectAttr(square + ".output", smooth + ".input1")
-    cmds.connectAttr(offset + ".output", smooth + ".input2")
-
-    return smooth + ".output"
+    return clamp_node + ".outputR"
 
 
 def _build_free(part_key, role, gate_plugs, nodes):
