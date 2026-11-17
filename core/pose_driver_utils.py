@@ -135,7 +135,7 @@ eight_direction_defs["thigh"] = eight_direction_defs["hip"]
 
 # 八方向门控只适合两轴大范围摆动的部位：上臂（Shoulder）与大腿（Hip）。
 # arm / thigh 是五段式命名下的等价写法，保留兼容。
-eight_direction_parts = ("shoulder", "arm", "hip", "thigh")
+eight_direction_parts = ("shoulder", "arm")
 
 # 四肢单轴多角度（前弯）：肘 / 膝。属性 F45 / F90 / F120，独立叠加。
 multi_angle_parts = {
@@ -801,6 +801,9 @@ def build_network(
         raise RuntimeError(
             u"手指类部位本轮只创建空组，属性留到 v2，收到：{}".format(joint)
         )
+
+    if part in ("hip", "thigh"):
+        return _build_hip_by_swing(joint, side, part, category)
 
     if part not in eight_direction_parts:
         raise RuntimeError(
@@ -1480,6 +1483,209 @@ def _build_spine(joint, side, part, category, neutral_inverse):
         "neutral": dict(neutral),
         "separator": separator,
         "attributes": dict(attributes),
+        "indicator": indicator,
+        "nodes": list(created_nodes),
+    }
+
+
+def _build_hip_swing(part_key, hip_joint, knee_joint, nodes):
+    u"""hip→knee 方向相对 neutral 的夹角与旋转轴。
+
+    构建时把当前 hip→knee 向量记成 neutral，运行时用 angleBetween 算摆动角；
+    IK / FK 都有效，不受 jointOrient 复合分解影响。
+
+    Returns:
+        tuple: (角度 plug, 旋转轴 Z plug)。
+    """
+
+    hip_decompose = _create(
+        "decompose_" + part_key + "_hip_001", "decomposeMatrix", nodes
+    )
+    cmds.connectAttr(
+        hip_joint + ".worldMatrix[0]", hip_decompose + ".inputMatrix"
+    )
+
+    knee_decompose = _create(
+        "decompose_" + part_key + "_knee_001", "decomposeMatrix", nodes
+    )
+    cmds.connectAttr(
+        knee_joint + ".worldMatrix[0]", knee_decompose + ".inputMatrix"
+    )
+
+    vector = _create(
+        "plus_" + part_key + "_legVec_001", "plusMinusAverage", nodes
+    )
+    cmds.setAttr(vector + ".operation", 2)
+
+    for axis in ("x", "y", "z"):
+        cmds.connectAttr(
+            knee_decompose + ".outputTranslate" + axis.upper(),
+            vector + ".input3D[0].input3D" + axis,
+        )
+        cmds.connectAttr(
+            hip_decompose + ".outputTranslate" + axis.upper(),
+            vector + ".input3D[1].input3D" + axis,
+        )
+
+    neutral = [
+        cmds.getAttr(vector + ".output3D" + axis) for axis in ("x", "y", "z")
+    ]
+
+    angle = _create(
+        "angleBetween_" + part_key + "_swing_001", "angleBetween", nodes
+    )
+    cmds.setAttr(angle + ".vector1X", neutral[0])
+    cmds.setAttr(angle + ".vector1Y", neutral[1])
+    cmds.setAttr(angle + ".vector1Z", neutral[2])
+
+    for axis in ("X", "Y", "Z"):
+        cmds.connectAttr(
+            vector + ".output3D" + axis.lower(),
+            angle + ".vector2" + axis,
+        )
+
+    return angle + ".angle", angle + ".axisZ"
+
+
+def _build_signed_angle_gate(
+        part_key, role, angle_plug, axis_plug, sign, threshold, nodes
+):
+    u"""总角度门 × 旋转轴符号门：sign=1 取正向，sign=-1 取负向。"""
+
+    magnitude = _build_gate(
+        part_key, role + "Mag", angle_plug, 1, threshold, nodes
+    )
+
+    signed = _create(
+        "mult_" + part_key + "_" + role + "Sign_001",
+        "multDoubleLinear",
+        nodes,
+    )
+    cmds.connectAttr(axis_plug, signed + ".input1")
+    cmds.setAttr(signed + ".input2", 1000.0 * sign)
+
+    sign_gate = _create(
+        "condition_" + part_key + "_" + role + "_001", "condition", nodes
+    )
+    cmds.connectAttr(signed + ".output", sign_gate + ".firstTerm")
+    cmds.setAttr(sign_gate + ".secondTerm", 0.5)
+    cmds.setAttr(sign_gate + ".operation", 2)
+    cmds.setAttr(sign_gate + ".colorIfTrueR", 1.0)
+    cmds.setAttr(sign_gate + ".colorIfFalseR", 0.0)
+
+    combo = _create(
+        "mult_" + part_key + "_" + role + "Out_001",
+        "multDoubleLinear",
+        nodes,
+    )
+    cmds.connectAttr(magnitude, combo + ".input1")
+    cmds.connectAttr(sign_gate + ".outColorR", combo + ".input2")
+
+    return combo + ".output"
+
+
+def _build_hip_by_swing(joint, side, part, category):
+    u"""hip 用 hip→knee 夹角驱动：往前 F90、往后 B70。"""
+
+    part_key = "{}_{}".format(side, part)
+    knee_joint = "Knee_" + ("L" if side == "lf" else "R")
+
+    if not cmds.objExists(knee_joint):
+        raise RuntimeError(u"缺少膝盖关节：{}".format(knee_joint))
+
+    created_nodes = []
+    added_attrs = []
+    group = None
+
+    cmds.undoInfo(openChunk=True, chunkName="PoseDriverBuild")
+
+    try:
+        ensure_all_groups()
+        group = get_or_create_group(category)
+        config = read_group_config(group)
+
+        if part_key in config:
+            _remove_part(group, config, part_key)
+
+        angle_plug, axis_plug = _build_hip_swing(
+            part_key, joint, knee_joint, created_nodes
+        )
+
+        direction_specs = (
+            ("F90", +1, 90),
+            ("B70", -1, 70),
+        )
+
+        separator = "sep_" + part_key
+        _add_separator(group, separator)
+        added_attrs.append(separator)
+
+        attributes = {}
+
+        for suffix, sign, threshold in direction_specs:
+            attribute = part_key + "_" + suffix
+            _add_weight_attr(group, attribute)
+            added_attrs.append(attribute)
+            attributes[suffix] = attribute
+
+        indicator = _create_indicator(joint, part_key, created_nodes)
+
+        for suffix, sign, threshold in direction_specs:
+            gate = _build_signed_angle_gate(
+                part_key, suffix, angle_plug, axis_plug, sign, threshold,
+                created_nodes
+            )
+            _create_driven_key(
+                group + "." + attributes[suffix],
+                gate,
+                part_key,
+                suffix,
+                created_nodes,
+            )
+
+        config[part_key] = {
+            "joint": joint,
+            "side": side,
+            "part": part,
+            "category": category,
+            "mode": "hip_swing",
+            "knee": knee_joint,
+            "separator": separator,
+            "attributes": attributes,
+            "indicator": indicator,
+            "nodes": list(created_nodes),
+        }
+
+        _write_config(group, config)
+
+    except Exception:
+        for attribute in added_attrs:
+            if group and cmds.attributeQuery(attribute, node=group, exists=True):
+                try:
+                    cmds.setAttr(group + "." + attribute, lock=False)
+                except RuntimeError:
+                    pass
+
+                cmds.deleteAttr(group + "." + attribute)
+
+        _delete_nodes(created_nodes)
+        raise
+
+    finally:
+        cmds.undoInfo(closeChunk=True)
+
+    cmds.select(group, replace=True)
+
+    return {
+        "group": group,
+        "part_key": part_key,
+        "joint": joint,
+        "side": side,
+        "part": part,
+        "category": category,
+        "mode": "hip_swing",
+        "attributes": dict(attributes),
+        "separator": separator,
         "indicator": indicator,
         "nodes": list(created_nodes),
     }

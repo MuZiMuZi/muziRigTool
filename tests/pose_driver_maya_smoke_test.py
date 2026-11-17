@@ -105,6 +105,10 @@ def build_scene():
     hip_r = cmds.joint(name="Hip1_R", position=(8, 0, 0))
 
     cmds.select(clear=True)
+    knee_r = cmds.joint(name="Knee_R", position=(8, 4, 0))
+    cmds.parent(knee_r, hip_r, absolute=True)
+
+    cmds.select(clear=True)
     spine1 = cmds.joint(name="Spine1_M", position=(0, 12, 0))
 
     cmds.select(clear=True)
@@ -694,7 +698,7 @@ def check_build_all(joints):
     results, errors = pose_driver_utils.build_all_supported()
 
     assert not errors, u"批量生成出错：{}".format(errors)
-    assert len(results) == 13, u"应该生成 13 个，实际 {}".format(len(results))
+    assert len(results) == 14, u"应该生成 14 个，实际 {}".format(len(results))
 
     part_keys = sorted(result["part_key"] for result in results)
 
@@ -709,6 +713,7 @@ def check_build_all(joints):
         "rt_elbow",
         "rt_hip",
         "rt_index",
+        "rt_knee",
         "rt_scapula",
         "rt_shoulder",
         "rt_wrist",
@@ -738,17 +743,18 @@ def check_build_all(joints):
             "lf_shoulder_" + suffix, node=arm_group, exists=True
         ), u"大臂不该有：{}".format(suffix)
 
-    # 大腿：只有 F90 / U90 / B70 / F45U90
+    # 大腿：hip→knee 夹角驱动，只有 F90 / B70
     leg_group = "grp_md_leg_pose_001"
 
-    for suffix in ("U90", "F90", "B70", "F45U90"):
+    for suffix in ("F90", "B70"):
         assert cmds.attributeQuery(
             "lf_hip_" + suffix, node=leg_group, exists=True
         ), u"大腿缺少属性：{}".format(suffix)
 
-    assert not cmds.attributeQuery(
-        "lf_hip_D45", node=leg_group, exists=True
-    ), u"大腿不该有 D45"
+    for suffix in ("U90", "F45U90", "D45"):
+        assert not cmds.attributeQuery(
+            "lf_hip_" + suffix, node=leg_group, exists=True
+        ), u"大腿不该有：{}".format(suffix)
 
     # 膝盖：负向屈伸 → B45 / B90 / B120
     for suffix in ("B45", "B90", "B120"):
