@@ -135,7 +135,7 @@ eight_direction_defs["thigh"] = eight_direction_defs["hip"]
 
 # 八方向门控只适合两轴大范围摆动的部位：上臂（Shoulder）与大腿（Hip）。
 # arm / thigh 是五段式命名下的等价写法，保留兼容。
-eight_direction_parts = ("shoulder", "arm")
+eight_direction_parts = ("shoulder", "arm", "hip", "thigh")
 
 # 四肢单轴多角度（前弯）：肘 / 膝。属性 F45 / F90 / F120，独立叠加。
 multi_angle_parts = {
@@ -802,9 +802,8 @@ def build_network(
             u"手指类部位本轮只创建空组，属性留到 v2，收到：{}".format(joint)
         )
 
-    if part in ("hip", "thigh"):
-        return _build_hip_by_swing(joint, side, part, category)
-
+    # 实测大腿 local rotate 是干净单轴：前抬 +Z、后摆 -Z、外展 -Y，
+    # 和手臂一样走八方向门控（夹角方案只在复合轴场景才需要）
     if part not in eight_direction_parts:
         raise RuntimeError(
             u"本轮八方向只支持 Shoulder / Hip（五段式的 arm / thigh），"
