@@ -248,6 +248,9 @@ adv_joint_map = {
     "Hand_R": ("rt", "hand", "arm"),
     "Hip_L": ("lf", "hip", "leg"),
     "Hip_R": ("rt", "hip", "leg"),
+    # ADV 大腿关节实际命名：L_Thigh / R_Thigh（前缀式）
+    "L_Thigh": ("lf", "hip", "leg"),
+    "R_Thigh": ("rt", "hip", "leg"),
     "Knee_L": ("lf", "knee", "leg"),
     "Knee_R": ("rt", "knee", "leg"),
     "Ankle_L": ("lf", "ankle", "leg"),
