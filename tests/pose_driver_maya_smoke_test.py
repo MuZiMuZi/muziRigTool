@@ -91,7 +91,7 @@ def build_scene():
     cmds.createNode("transform", name="FKWrist_R")
 
     cmds.select(clear=True)
-    hip_l = cmds.joint(name="Hip_L", position=(-4, 0, 0))
+    hip_l = cmds.joint(name="L_Thigh", position=(-4, 0, 0))
 
     cmds.select(clear=True)
     knee_l = cmds.joint(name="Knee_L", position=(-4, 4, 0))
@@ -102,7 +102,7 @@ def build_scene():
     cmds.parent(ankle_l, knee_l, absolute=True)
 
     cmds.select(clear=True)
-    hip_r = cmds.joint(name="Hip_R", position=(8, 0, 0))
+    hip_r = cmds.joint(name="R_Thigh", position=(8, 0, 0))
 
     cmds.select(clear=True)
     spine1 = cmds.joint(name="Spine1_M", position=(0, 12, 0))
@@ -142,7 +142,7 @@ def check_find_supported():
     found = [item["short"] for item in items]
 
     for name in (
-            "Shoulder_L", "Shoulder_R", "Hip_L", "Hip_R",
+            "Shoulder_L", "Shoulder_R", "L_Thigh", "R_Thigh",
             "Clavicle_R", "Scapula_R", "Elbow_R", "Knee_L", "Wrist_R", "Ankle_L",
             "IndexFinger1_R", "Spine1_M",
     ):
@@ -563,6 +563,38 @@ def check_clavicle(joints):
     print(u"[ok] 锁骨：F45 / B45 / U45")
 
 
+def check_legs(joints):
+    u"""双腿合并：两腿都到位才驱动。"""
+
+    result = pose_driver_utils.build_network("md_legs")
+    group = result["group"]
+
+    for suffix in ("U90", "F90", "B70", "F45U90"):
+        assert "md_legs_" + suffix in result["attributes"].values(), (
+            u"缺少双腿属性：{}".format(suffix)
+        )
+
+    left = "L_Thigh"
+    right = "R_Thigh"
+
+    cmds.setAttr(left + ".rotateY", -90.0)
+    cmds.setAttr(right + ".rotateY", -90.0)
+
+    assert abs(cmds.getAttr(group + ".md_legs_U90") - 1.0) < 1e-5, (
+        u"两腿都到位时 md_legs_U90 不是 1"
+    )
+
+    cmds.setAttr(right + ".rotateY", 0.0)
+
+    assert abs(cmds.getAttr(group + ".md_legs_U90")) < 1e-5, (
+        u"只一条腿时 md_legs_U90 应为 0"
+    )
+
+    cmds.setAttr(left + ".rotateY", 0.0)
+
+    print(u"[ok] 双腿合并：两腿都到位才驱动")
+
+
 def check_scapula(joints):
     u"""Scapula：F45 / B45 / U45。"""
 
@@ -662,7 +694,7 @@ def check_build_all(joints):
     results, errors = pose_driver_utils.build_all_supported()
 
     assert not errors, u"批量生成出错：{}".format(errors)
-    assert len(results) == 12, u"应该生成 12 个，实际 {}".format(len(results))
+    assert len(results) == 13, u"应该生成 13 个，实际 {}".format(len(results))
 
     part_keys = sorted(result["part_key"] for result in results)
 
@@ -671,6 +703,7 @@ def check_build_all(joints):
         "lf_hip",
         "lf_knee",
         "lf_shoulder",
+        "md_legs",
         "md_spine1",
         "rt_clavicle",
         "rt_elbow",
@@ -733,7 +766,7 @@ def check_skirt():
         "skirt_lf_hip_F90", node=group, exists=True
     ), u"裙组没有镜像腿部属性"
 
-    hip = "Hip_L"
+    hip = "L_Thigh"
     cmds.setAttr(hip + ".rotateZ", 90.0)
 
     assert abs(
@@ -836,6 +869,7 @@ def main():
     check_scapula(joints)
     check_finger(joints)
     check_spine(joints)
+    check_legs(joints)
 
     check_build_all(joints)
     check_skirt()

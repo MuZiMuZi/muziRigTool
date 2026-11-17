@@ -739,6 +739,9 @@ def build_network(
         ValueError: 轴对、阈值或方向非法。
     """
 
+    if joint == "md_legs":
+        return _build_legs()
+
     validate_joint(joint)
 
     finger_info = parse_finger_joint(joint)
@@ -1477,6 +1480,177 @@ def _build_spine(joint, side, part, category, neutral_inverse):
     }
 
 
+def _build_legs():
+    u"""双腿合并修型：两条腿都到位才驱动（左门 × 右门）。
+
+    输入两根大腿关节的 local rotate，方向与大腿一致：
+    F90 / U90 / B70 / F45U90。
+    """
+
+    part_key = "md_legs"
+    left_joint = "L_Thigh"
+    right_joint = "R_Thigh"
+
+    for name in (left_joint, right_joint):
+        if not cmds.objExists(name):
+            raise RuntimeError(u"缺少大腿关节：{}".format(name))
+
+    left_neutral = _read_joint_neutral(left_joint, ("rotateY", "rotateZ"))
+    right_neutral = _read_joint_neutral(right_joint, ("rotateY", "rotateZ"))
+
+    created_nodes = []
+    added_attrs = []
+    group = None
+
+    cmds.undoInfo(openChunk=True, chunkName="PoseDriverBuild")
+
+    try:
+        ensure_all_groups()
+        group = get_or_create_group("leg")
+        config = read_group_config(group)
+
+        if part_key in config:
+            _remove_part(group, config, part_key)
+
+        deltas = {}
+
+        for tag, joint, neutral in (
+                ("l", left_joint, left_neutral),
+                ("r", right_joint, right_neutral),
+        ):
+            deltas[(tag, "a")] = _build_channel_delta(
+                part_key, tag + "a", joint + ".rotateY",
+                neutral["rotateY"], created_nodes
+            )
+            deltas[(tag, "b")] = _build_channel_delta(
+                part_key, tag + "b", joint + ".rotateZ",
+                neutral["rotateZ"], created_nodes
+            )
+
+        gate_cache = {}
+
+        def get_gate(tag, axis, sign, gate_angle):
+            key = (tag, axis, sign, gate_angle)
+
+            if key in gate_cache:
+                return gate_cache[key]
+
+            gate = _build_gate(
+                part_key,
+                "{}{}s{}a{}".format(
+                    tag, axis, "p" if sign > 0 else "n", int(gate_angle)
+                ),
+                deltas[(tag, axis)],
+                sign,
+                gate_angle,
+                created_nodes,
+            )
+            gate_cache[key] = gate
+
+            return gate
+
+        def combine(tag, components):
+            sources = [
+                get_gate(tag, axis, sign, gate_angle)
+                for axis, sign, gate_angle in components
+            ]
+
+            if len(sources) == 1:
+                return sources[0]
+
+            node = _create(
+                "mult_{}_out{}_001".format(part_key, tag),
+                "multDoubleLinear",
+                created_nodes,
+            )
+            cmds.connectAttr(sources[0], node + ".input1")
+            cmds.connectAttr(sources[1], node + ".input2")
+
+            return node + ".output"
+
+        direction_defs = eight_direction_defs["hip"]
+
+        separator = "sep_" + part_key
+        _add_separator(group, separator)
+        added_attrs.append(separator)
+
+        attributes = {}
+
+        for direction, suffix, components in direction_defs:
+            attribute = part_key + "_" + suffix
+            _add_weight_attr(group, attribute)
+            added_attrs.append(attribute)
+            attributes[direction] = attribute
+
+        indicator = _create_indicator(left_joint, part_key, created_nodes)
+
+        for direction, suffix, components in direction_defs:
+            left_output = combine("l", components)
+            right_output = combine("r", components)
+
+            combo = _create(
+                "mult_" + part_key + "_out" + _camel_case(direction) + "_001",
+                "multDoubleLinear",
+                created_nodes,
+            )
+            cmds.connectAttr(left_output, combo + ".input1")
+            cmds.connectAttr(right_output, combo + ".input2")
+
+            _create_driven_key(
+                group + "." + attributes[direction],
+                combo + ".output",
+                part_key,
+                suffix,
+                created_nodes,
+            )
+
+        config[part_key] = {
+            "joint": left_joint,
+            "side": "md",
+            "part": "legs",
+            "category": "leg",
+            "mode": "legs",
+            "attributes": attributes,
+            "separator": separator,
+            "indicator": indicator,
+            "nodes": list(created_nodes),
+        }
+
+        _write_config(group, config)
+
+    except Exception:
+        for attribute in added_attrs:
+            if group and cmds.attributeQuery(attribute, node=group, exists=True):
+                try:
+                    cmds.setAttr(group + "." + attribute, lock=False)
+                except RuntimeError:
+                    pass
+
+                cmds.deleteAttr(group + "." + attribute)
+
+        _delete_nodes(created_nodes)
+        raise
+
+    finally:
+        cmds.undoInfo(closeChunk=True)
+
+    cmds.select(group, replace=True)
+
+    return {
+        "group": group,
+        "part_key": part_key,
+        "joint": left_joint,
+        "side": "md",
+        "part": "legs",
+        "category": "leg",
+        "mode": "legs",
+        "attributes": dict(attributes),
+        "separator": separator,
+        "indicator": indicator,
+        "nodes": list(created_nodes),
+    }
+
+
 def _build_swing(joint, side, part, category, neutral_inverse):
     u"""锁骨这类只摆动、不扭转的多方向部位。"""
 
@@ -2095,6 +2269,15 @@ def find_supported_joints():
             "side": side,
             "part": part,
             "category": category,
+        })
+
+    if cmds.objExists("L_Thigh") and cmds.objExists("R_Thigh"):
+        found.append({
+            "joint": "md_legs",
+            "short": "md_legs",
+            "side": "md",
+            "part": "legs",
+            "category": "leg",
         })
 
     for finger, base in finger_defs.items():
