@@ -114,7 +114,7 @@ def check_samples(joints):
     u"""摆到样本姿态时对应属性接近 1，中立时接近 0。"""
 
     shoulder = joints["Shoulder_L"]
-    group = "grp_rbf_arm_pose_001"
+    group = "grp_md_arm_pose_001"
 
     cmds.setAttr(shoulder + ".rotateY", -90.0)
 
@@ -143,7 +143,7 @@ def check_elbow(joints):
     u"""单轴多角度：F90 样本点。"""
 
     elbow = joints["Elbow_R"]
-    group = "grp_rbf_arm_pose_001"
+    group = "grp_md_arm_pose_001"
 
     cmds.setAttr(elbow + ".rotateZ", 90.0)
 
@@ -169,7 +169,7 @@ def check_delete():
 
     assert removed >= 11, u"删除数量不对：{}".format(removed)
 
-    group = "grp_rbf_arm_pose_001"
+    group = "grp_md_arm_pose_001"
 
     assert not cmds.attributeQuery(
         "lf_shoulder_U90", node=group, exists=True

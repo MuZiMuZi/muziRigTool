@@ -14,11 +14,11 @@ RBF 版把「关节姿态」当成多维输入，每个修型属性是一个样�
 ## 2. 组结构
 
 ```text
-grp_rbf_all_pose_001          总组
-├─ grp_rbf_arm_pose_001
-├─ grp_rbf_spine_pose_001
-├─ grp_rbf_leg_pose_001
-└─ grp_rbf_finger_pose_001
+grp_md_all_pose_001          总组（与方向门控版共用）
+├─ grp_md_arm_pose_001
+├─ grp_md_spine_pose_001
+├─ grp_md_leg_pose_001
+└─ grp_md_finger_pose_001
 ```
 
 ## 3. 输入
@@ -49,7 +49,7 @@ grp_rbf_all_pose_001          总组
 肩 B70   →  Shoulder rotateZ = -70
 肘 F90   →  Elbow rotateZ = 90
 腕 TwsP179 → Wrist rotateX = 179
-脊柱 F45 →  Spine1_M rotateX = 45
+脊柱 F45 →  Spine1_M rotateZ = 45（前后 = rotateZ）
 ```
 
 属性名沿用 `<side>_<part>_<方向><角度>`，与 `pose_driver` 一致，方便对照。
@@ -93,7 +93,7 @@ rbf_pose_driver_utils.read_weights("lf_shoulder")
 | 文件 | 作用 |
 |---|---|
 | `core/deformation/rbf_weight_math.py` | 纯数学：距离、高斯核、精确插值求解 |
-| `core/deformation/rbf_pose_driver_utils.py` | 部位样本表、expression 编译、组属性、删除 |
+| `core/rbf_pose_driver_utils.py` | 部位样本表、expression 编译、组属性、删除 |
 | `tools/rig/rbf_pose_driver_tool.py` | 窗口 |
 | `tests/test_rbf_weight_math.py` | 纯数学单测（12 个） |
 | `tests/rbf_pose_driver_maya_smoke_test.py` | Maya 真机冒烟（5 项） |

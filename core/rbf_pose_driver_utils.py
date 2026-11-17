@@ -1,9 +1,9 @@
 # coding=utf-8
-"""RBF 版姿态驱动修型：独立工具，输入 ADV 关节 local rotate，输出到 grp_rbf_* 组。
+"""RBF 版姿态驱动修型：输入 ADV 关节 local rotate，输出统一挂到 grp_md_* 组。
 
-与 pose_driver（方向门控版）并存，互不影响：
-- 组名独立：grp_rbf_all_pose_001 / grp_rbf_arm_pose_001 ...
-- 属性名沿用 <side>_<part>_<方向><角度>，方便对照
+RBF 只作为计算方式，属性与方向门控版共用同一套组和属性名：
+- 组：grp_md_all_pose_001 / grp_md_arm_pose_001 ...
+- 属性名沿用 <side>_<part>_<方向><角度>
 - 每个部位一个 expression 节点，系数在构建时训练并编译成 MEL 常量
 """
 
@@ -12,16 +12,11 @@ import math
 
 from maya import cmds
 
-from . import rbf_weight_math
+from . import pose_driver_utils, rbf_weight_math
 
-rbf_master_group = "grp_rbf_all_pose_001"
+rbf_master_group = pose_driver_utils.master_group_name
 
-rbf_group_names = {
-    "arm": "grp_rbf_arm_pose_001",
-    "spine": "grp_rbf_spine_pose_001",
-    "leg": "grp_rbf_leg_pose_001",
-    "finger": "grp_rbf_finger_pose_001",
-}
+rbf_group_names = pose_driver_utils.group_names
 
 rbf_sigma = 45.0
 # 输入已经是角度，直接用原始距离；scale 不再归一化，否则核值全接近 1 矩阵会病态
@@ -49,27 +44,30 @@ def _suffix(letter, angle):
     return letter + str(int(angle))
 
 
-def _eight_samples(side, part, angles):
-    u"""八方向样本：[(后缀, (x, y, z))]。
+def _shoulder_samples():
+    u"""大臂：单轴四方向 + 向上四个对角（去掉向下的 F45D45 / B45D45）。"""
 
-    轴约定与 pose_driver 一致：A 轴 = rotateY（上下），B 轴 = rotateZ（前后）。
-    """
-
-    up, down, front, back = angles
-    hand = part in ("shoulder",)
-
-    rows = [
-        (_suffix("U", up), (0.0, -float(up), 0.0)),
-        (_suffix("D", down), (0.0, float(down), 0.0)),
-        (_suffix("F", front), (0.0, 0.0, float(front))),
-        (_suffix("B", back), (0.0, 0.0, -float(back))),
+    return [
+        ("U90", (0.0, -90.0, 0.0)),
+        ("D45", (0.0, 45.0, 0.0)),
+        ("F90", (0.0, 0.0, 90.0)),
+        ("B70", (0.0, 0.0, -70.0)),
+        ("F45U90", (0.0, -90.0, 45.0)),
         ("F45U45", (0.0, -45.0, 45.0)),
-        ("F45D45", (0.0, 45.0, 45.0)),
         ("B45U45", (0.0, -45.0, -45.0)),
-        ("B45D45", (0.0, 45.0, -45.0)),
+        ("B45U90", (0.0, -90.0, -45.0)),
     ]
 
-    return rows
+
+def _hip_samples():
+    u"""大腿：前、上、后 + 前上对角。"""
+
+    return [
+        ("U90", (0.0, -90.0, 0.0)),
+        ("F90", (0.0, 0.0, 90.0)),
+        ("B70", (0.0, 0.0, -70.0)),
+        ("F45U90", (0.0, -90.0, 45.0)),
+    ]
 
 
 def _multi_samples(axis, angles):
@@ -85,7 +83,11 @@ def _multi_samples(axis, angles):
 
 
 def _four_twist_samples(angles, twist_angle):
-    u"""四方向 + 双向扭转样本（腕/踝）。"""
+    u"""四方向 + 双向扭转样本（腕/踝）。
+
+    属性名保留 TwsP179/TwsN179，但样本值用 45°：
+    核宽 45° 时 179° 样本距离太远，权重会被压到几乎不亮。
+    """
 
     up, down, left, right = angles
     return [
@@ -93,32 +95,38 @@ def _four_twist_samples(angles, twist_angle):
         (_suffix("D", down), (0.0, float(down), 0.0)),
         (_suffix("L", left), (0.0, 0.0, float(left))),
         (_suffix("R", right), (0.0, 0.0, -float(right))),
+        ("TwsP" + str(int(twist_angle)), (45.0, 0.0, 0.0)),
+        ("TwsN" + str(int(twist_angle)), (-45.0, 0.0, 0.0)),
+    ]
+
+
+def _spine_samples(angle, twist_angle):
+    u"""脊柱：前后 = rotateZ，左右 = rotateY，扭转 = rotateX。"""
+
+    return [
+        ("F" + str(int(angle)), (0.0, 0.0, float(angle))),
+        ("B" + str(int(angle)), (0.0, 0.0, -float(angle))),
+        ("L" + str(int(angle)), (0.0, -float(angle), 0.0)),
+        ("R" + str(int(angle)), (0.0, float(angle), 0.0)),
         ("TwsP" + str(int(twist_angle)), (float(twist_angle), 0.0, 0.0)),
         ("TwsN" + str(int(twist_angle)), (-float(twist_angle), 0.0, 0.0)),
     ]
 
 
-def _spine_samples(angle, twist_angle):
-    u"""脊柱：前后左右 + 双向扭转。"""
-
-    return [
-        ("F" + str(int(angle)), (float(angle), 0.0, 0.0)),
-        ("B" + str(int(angle)), (-float(angle), 0.0, 0.0)),
-        ("L" + str(int(angle)), (0.0, 0.0, float(angle))),
-        ("R" + str(int(angle)), (0.0, 0.0, -float(angle))),
-        ("TwsP" + str(int(twist_angle)), (0.0, float(twist_angle), 0.0)),
-        ("TwsN" + str(int(twist_angle)), (0.0, -float(twist_angle), 0.0)),
-    ]
-
-
 def _clavicle_samples(angle):
-    u"""锁骨：前上下的 45° 样本。"""
+    u"""锁骨：前、后、上。"""
 
     return [
         ("F" + str(int(angle)), (0.0, 0.0, float(angle))),
+        ("B" + str(int(angle)), (0.0, 0.0, -float(angle))),
         ("U" + str(int(angle)), (0.0, -float(angle), 0.0)),
-        ("D" + str(int(angle)), (0.0, float(angle), 0.0)),
     ]
+
+
+def _scapula_samples(angle):
+    u"""肩胛骨：前、后、上。"""
+
+    return _clavicle_samples(angle)
 
 
 def get_rbf_part_specs():
@@ -135,15 +143,13 @@ def get_rbf_part_specs():
             "side": side,
             "part": "shoulder",
             "category": "arm",
-            "samples": _eight_samples(
-                side, "shoulder", (90, 45, 90, 70)
-            ),
+            "samples": _shoulder_samples(),
         }
         specs["Hip_" + suffix] = {
             "side": side,
             "part": "hip",
             "category": "leg",
-            "samples": _eight_samples(side, "hip", (90, 90, 90, 70)),
+            "samples": _hip_samples(),
         }
         specs["Elbow_" + suffix] = {
             "side": side,
@@ -155,7 +161,7 @@ def get_rbf_part_specs():
             "side": side,
             "part": "knee",
             "category": "leg",
-            "samples": _multi_samples("rotateX", (45, 90, 120)),
+            "samples": _multi_samples("rotateZ", (45, 90, 120)),
         }
         specs["Wrist_" + suffix] = {
             "side": side,
@@ -174,6 +180,12 @@ def get_rbf_part_specs():
             "part": "clavicle",
             "category": "arm",
             "samples": _clavicle_samples(45),
+        }
+        specs["Scapula_" + suffix] = {
+            "side": side,
+            "part": "scapula",
+            "category": "arm",
+            "samples": _scapula_samples(45),
         }
 
     specs["Spine1_M"] = {
@@ -223,42 +235,21 @@ def _group_name(category):
 
 
 def get_or_create_master_group():
-    u"""总组，收敛所有 RBF 汇总组。"""
+    u"""总组，复用方向门控版的 grp_md_all_pose_001。"""
 
-    if cmds.objExists(rbf_master_group):
-        return rbf_master_group
-
-    return cmds.createNode("transform", name=rbf_master_group)
+    return pose_driver_utils.get_or_create_master_group()
 
 
 def get_or_create_group(category):
-    u"""RBF 汇总组。"""
+    u"""汇总组，复用方向门控版的 grp_md_* 组。"""
 
-    name = _group_name(category)
-
-    if cmds.objExists(name):
-        return name
-
-    return cmds.createNode("transform", name=name)
+    return pose_driver_utils.get_or_create_group(category)
 
 
 def ensure_all_groups():
-    u"""补齐总组与四个汇总组，并全部收进总组。"""
+    u"""补齐总组与四个汇总组，复用方向门控版。"""
 
-    master = get_or_create_master_group()
-    groups = []
-
-    for category in rbf_group_names:
-        group = get_or_create_group(category)
-        parents = cmds.listRelatives(group, parent=True, fullPath=True) or []
-        current = parents[0].split("|")[-1] if parents else None
-
-        if current != master:
-            group = cmds.parent(group, master)[0]
-
-        groups.append(group)
-
-    return groups
+    return pose_driver_utils.ensure_all_groups()
 
 
 def _hide_transform_attrs(node):
