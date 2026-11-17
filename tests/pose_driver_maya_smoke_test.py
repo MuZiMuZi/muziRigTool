@@ -743,15 +743,15 @@ def check_build_all(joints):
             "lf_shoulder_" + suffix, node=arm_group, exists=True
         ), u"大臂不该有：{}".format(suffix)
 
-    # 大腿：hip→knee 夹角驱动，只有 F90 / B70
+    # 大腿：夹角驱动，F90 / B70 / U90 / F45U90
     leg_group = "grp_md_leg_pose_001"
 
-    for suffix in ("F90", "B70"):
+    for suffix in ("F90", "B70", "U90", "F45U90"):
         assert cmds.attributeQuery(
             "lf_hip_" + suffix, node=leg_group, exists=True
         ), u"大腿缺少属性：{}".format(suffix)
 
-    for suffix in ("U90", "F45U90", "D45"):
+    for suffix in ("D45", "D90"):
         assert not cmds.attributeQuery(
             "lf_hip_" + suffix, node=leg_group, exists=True
         ), u"大腿不该有：{}".format(suffix)

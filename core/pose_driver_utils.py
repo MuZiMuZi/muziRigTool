@@ -1584,8 +1584,47 @@ def _build_signed_angle_gate(
     return combo + ".output"
 
 
+def _build_hip_side_detector(part_key, hip_joint, nodes):
+    u"""用 hip local rotateY / rotateZ 的平方比较区分外展和前抬。
+
+    实测：外展时 rotateY ≈ -90（主分量），前抬时 rotateZ 为主。
+    """
+
+    ry_squared = _create(
+        "mult_" + part_key + "_rySq_001", "multDoubleLinear", nodes
+    )
+    cmds.connectAttr(hip_joint + ".rotateY", ry_squared + ".input1")
+    cmds.connectAttr(hip_joint + ".rotateY", ry_squared + ".input2")
+
+    rz_squared = _create(
+        "mult_" + part_key + "_rzSq_001", "multDoubleLinear", nodes
+    )
+    cmds.connectAttr(hip_joint + ".rotateZ", rz_squared + ".input1")
+    cmds.connectAttr(hip_joint + ".rotateZ", rz_squared + ".input2")
+
+    side = _create(
+        "condition_" + part_key + "_side_001", "condition", nodes
+    )
+    cmds.connectAttr(ry_squared + ".output", side + ".firstTerm")
+    cmds.connectAttr(rz_squared + ".output", side + ".secondTerm")
+    cmds.setAttr(side + ".operation", 2)
+    cmds.setAttr(side + ".colorIfTrueR", 1.0)
+    cmds.setAttr(side + ".colorIfFalseR", 0.0)
+
+    front = _create(
+        "condition_" + part_key + "_front_001", "condition", nodes
+    )
+    cmds.connectAttr(rz_squared + ".output", front + ".firstTerm")
+    cmds.connectAttr(ry_squared + ".output", front + ".secondTerm")
+    cmds.setAttr(front + ".operation", 3)
+    cmds.setAttr(front + ".colorIfTrueR", 1.0)
+    cmds.setAttr(front + ".colorIfFalseR", 0.0)
+
+    return side + ".outColorR", front + ".outColorR"
+
+
 def _build_hip_by_swing(joint, side, part, category):
-    u"""hip 用 hip→knee 夹角驱动：往前 F90、往后 B70。"""
+    u"""hip 用 hip→knee 夹角驱动：往前 F90 / 往后 B70 / 外展 U90 / 斜外上 F45U90。"""
 
     part_key = "{}_{}".format(side, part)
     knee_joint = "Knee_" + ("L" if side == "lf" else "R")
@@ -1610,11 +1649,51 @@ def _build_hip_by_swing(joint, side, part, category):
         angle_plug, axis_plug = _build_hip_swing(
             part_key, joint, knee_joint, created_nodes
         )
-
-        direction_specs = (
-            ("F90", +1, 90),
-            ("B70", -1, 70),
+        side_plug, front_plug = _build_hip_side_detector(
+            part_key, joint, created_nodes
         )
+
+        def multiply(first, second, name):
+            node = _create(
+                "mult_" + part_key + "_" + name + "_001",
+                "multDoubleLinear",
+                created_nodes,
+            )
+            cmds.connectAttr(first, node + ".input1")
+            cmds.connectAttr(second, node + ".input2")
+
+            return node + ".output"
+
+        direction_gates = {
+            "F90": multiply(
+                _build_signed_angle_gate(
+                    part_key, "F90", angle_plug, axis_plug, 1, 90,
+                    created_nodes
+                ),
+                front_plug,
+                "F90Dir",
+            ),
+            "B70": multiply(
+                _build_signed_angle_gate(
+                    part_key, "B70", angle_plug, axis_plug, -1, 70,
+                    created_nodes
+                ),
+                front_plug,
+                "B70Dir",
+            ),
+            "U90": multiply(
+                _build_gate(part_key, "U90", angle_plug, 1, 90, created_nodes),
+                side_plug,
+                "U90Dir",
+            ),
+            "F45U90": multiply(
+                _build_gate(part_key, "F45U90", angle_plug, 1, 45, created_nodes),
+                side_plug,
+                "F45U90Dir",
+            ),
+        }
+
+        direction_specs = tuple(direction_gates)
 
         separator = "sep_" + part_key
         _add_separator(group, separator)
@@ -1622,7 +1701,7 @@ def _build_hip_by_swing(joint, side, part, category):
 
         attributes = {}
 
-        for suffix, sign, threshold in direction_specs:
+        for suffix in direction_gates:
             attribute = part_key + "_" + suffix
             _add_weight_attr(group, attribute)
             added_attrs.append(attribute)
@@ -1630,11 +1709,7 @@ def _build_hip_by_swing(joint, side, part, category):
 
         indicator = _create_indicator(joint, part_key, created_nodes)
 
-        for suffix, sign, threshold in direction_specs:
-            gate = _build_signed_angle_gate(
-                part_key, suffix, angle_plug, axis_plug, sign, threshold,
-                created_nodes
-            )
+        for suffix, gate in direction_gates.items():
             _create_driven_key(
                 group + "." + attributes[suffix],
                 gate,
