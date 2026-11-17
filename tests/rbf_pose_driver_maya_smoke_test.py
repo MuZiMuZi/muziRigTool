@@ -166,19 +166,22 @@ def check_elbow(joints):
 
 
 def check_delete():
-    u"""删除全部。"""
+    u"""删除全部（连组一起删）。"""
 
     removed = rbf_pose_driver_utils.delete_all_rbf_parts()
 
     assert removed >= 13, u"删除数量不对：{}".format(removed)
 
-    group = "grp_md_arm_pose_001"
+    assert not cmds.objExists(
+        rbf_pose_driver_utils.rbf_master_group
+    ), u"删除后总组残留"
 
-    assert not cmds.attributeQuery(
-        "lf_shoulder_U90", node=group, exists=True
-    ), u"删除后属性残留"
+    for category in rbf_pose_driver_utils.rbf_group_names:
+        name = rbf_pose_driver_utils._group_name(category)
 
-    print(u"[ok] RBF 删除全部：{} 个部位".format(removed))
+        assert not cmds.objExists(name), u"删除后组残留：{}".format(name)
+
+    print(u"[ok] RBF 删除全部：{} 个部位，组也一起删".format(removed))
 
 
 def main():
