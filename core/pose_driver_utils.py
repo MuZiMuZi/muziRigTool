@@ -197,10 +197,11 @@ finger_angle = 90.0
 finger_attribute_suffixes = ("1", "2", "3", "12", "23", "123")
 
 # 脊柱：ADV 的驱动骨架是 *_M（deform），控制器同名带 FK 前缀。
-spine_parts = ("spine1", "chest")
+spine_parts = ("spine1", "spine2", "chest")
 spine_angle = 45.0
 spine_controllers = {
     "spine1": "FKSpine1_M",
+    "spine2": "FKSpine2_M",
     "chest": "FKChest_M",
 }
 swing_parts = {
@@ -226,7 +227,7 @@ swing_parts = {
 supported_parts = (
     "shoulder", "arm", "hip", "thigh", "clavicle", "scapula",
     "elbow", "knee", "wrist", "ankle",
-    "spine1", "chest",
+    "spine1", "spine2", "chest",
 )
 
 # ADV 标准骨架关节名 → (side, part, category)。
@@ -255,7 +256,6 @@ adv_joint_map = {
     "Toe_R": ("rt", "toe", "leg"),
     "Spine1_M": ("md", "spine1", "spine"),
     "Spine2_M": ("md", "spine2", "spine"),
-    "Spine3_M": ("md", "spine3", "spine"),
     "Chest_M": ("md", "chest", "spine"),
     "Neck": ("md", "neck", "spine"),
     "Head": ("md", "head", "spine"),

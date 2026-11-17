@@ -194,6 +194,12 @@ def get_rbf_part_specs():
         "category": "spine",
         "samples": _spine_samples(45, 45),
     }
+    specs["Spine2_M"] = {
+        "side": "md",
+        "part": "spine2",
+        "category": "spine",
+        "samples": _spine_samples(45, 45),
+    }
     specs["Chest_M"] = {
         "side": "md",
         "part": "chest",
