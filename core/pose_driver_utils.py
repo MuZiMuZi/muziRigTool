@@ -1687,9 +1687,15 @@ def _build_hip_by_swing(joint, side, part, category):
                 "U90Dir",
             ),
             "F45U90": multiply(
-                _build_gate(part_key, "F45U90", angle_plug, 1, 45, created_nodes),
-                side_plug,
-                "F45U90Dir",
+                multiply(
+                    _build_gate(
+                        part_key, "F45U90", angle_plug, 1, 45, created_nodes
+                    ),
+                    side_plug,
+                    "F45U90Side",
+                ),
+                front_plug,
+                "F45U90Front",
             ),
         }
 
