@@ -1126,6 +1126,20 @@ def _build_multiply(part_key, role, first, second, nodes):
     return node + ".output"
 
 
+def _build_multiply_constant(part_key, role, plug, value, nodes):
+    u"""plug × 常量。"""
+
+    node = _create(
+        "mult_" + part_key + "_" + role + "Const_001",
+        "multDoubleLinear",
+        nodes,
+    )
+    cmds.connectAttr(plug, node + ".input1")
+    cmds.setAttr(node + ".input2", float(value))
+
+    return node + ".output"
+
+
 def _build_channel_delta(part_key, role, plug, neutral_value, nodes):
     u"""建通道差值：当前通道值 − neutral。"""
 
@@ -2106,6 +2120,12 @@ def _build_multi_angle(joint, side, part, category, neutral, neutral_inverse):
             part_key, "x", joint + "." + axis, neutral[axis],
             created_nodes
         )
+
+        # 膝盖这类负向弯曲：把 delta 翻成正向再进门
+        if spec.get("sign", 1) < 0:
+            delta = _build_multiply_constant(
+                part_key, "sign", delta, -1.0, created_nodes
+            )
 
         separator = "sep_" + part_key
         _add_separator(group, separator)

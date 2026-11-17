@@ -567,6 +567,26 @@ def check_clavicle(joints):
     print(u"[ok] 锁骨：F45 / B45 / U45")
 
 
+def check_knee_direction():
+    u"""膝盖负向弯曲：B45 交棒、B90 到 1。"""
+
+    group = "grp_md_leg_pose_001"
+    knee = "Knee_L"
+
+    cmds.setAttr(knee + ".rotateZ", -90.0)
+
+    assert abs(cmds.getAttr(group + ".lf_knee_B90") - 1.0) < 1e-4, (
+        u"膝盖负向 90° 时 B90 不是 1"
+    )
+    assert abs(cmds.getAttr(group + ".lf_knee_B45")) < 1e-4, (
+        u"膝盖负向 90° 时 B45 没有交棒"
+    )
+
+    cmds.setAttr(knee + ".rotateZ", 0.0)
+
+    print(u"[ok] 膝盖：负向弯曲驱动 B45/B90/B120")
+
+
 def check_legs(joints):
     u"""双腿合并：两腿都到位才驱动。"""
 
@@ -889,6 +909,7 @@ def main():
     check_legs(joints)
 
     check_build_all(joints)
+    check_knee_direction()
     check_skirt()
     check_delete_all()
 
