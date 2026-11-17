@@ -262,7 +262,11 @@ class PoseDriverTool(MayaQWidgetBaseMixin, QtWidgets.QWidget):
         }
 
     def build_all(self):
-        u"""给场景里所有支持八方向的关节生成属性。"""
+        u"""给场景里所有支持八方向的关节生成属性。
+
+        方向清单按部位定义全量生成，不再按界面勾选过滤
+        （大臂/大腿的方向集合不同，勾选框只保留给单部位调试用）。
+        """
 
         try:
             settings = self.collect_settings()
@@ -270,7 +274,6 @@ class PoseDriverTool(MayaQWidgetBaseMixin, QtWidgets.QWidget):
                 axes=settings["axes"],
                 angle=settings["angle"],
                 angle_map=settings["angle_map"],
-                directions=settings["directions"],
             )
         except Exception as error:
             cmds.warning(str(error))

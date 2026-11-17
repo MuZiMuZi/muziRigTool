@@ -659,9 +659,7 @@ def check_spine(joints):
 def check_build_all(joints):
     u"""一键生成全部：Shoulder / Hip 都建，其他跳过。"""
 
-    results, errors = pose_driver_utils.build_all_supported(
-        directions=("up", "front"),
-    )
+    results, errors = pose_driver_utils.build_all_supported()
 
     assert not errors, u"批量生成出错：{}".format(errors)
     assert len(results) == 12, u"应该生成 12 个，实际 {}".format(len(results))
@@ -690,6 +688,34 @@ def check_build_all(joints):
     assert "rt_elbow" in arm_parts, u"arm 组缺少右肘"
     assert "lf_hip" in leg_parts, u"leg 组缺少左大腿"
     assert "lf_ankle" in leg_parts, u"leg 组缺少左踝"
+
+    # 大臂：单轴四方向 + 向上四对角，含 F45U90 / B45U90
+    arm_group = "grp_md_arm_pose_001"
+
+    for suffix in (
+            "U90", "D45", "F90", "B70",
+            "F45U90", "F45U45", "B45U45", "B45U90",
+    ):
+        assert cmds.attributeQuery(
+            "lf_shoulder_" + suffix, node=arm_group, exists=True
+        ), u"大臂缺少属性：{}".format(suffix)
+
+    for suffix in ("F45D45", "B45D45"):
+        assert not cmds.attributeQuery(
+            "lf_shoulder_" + suffix, node=arm_group, exists=True
+        ), u"大臂不该有：{}".format(suffix)
+
+    # 大腿：只有 F90 / U90 / B70 / F45U90
+    leg_group = "grp_md_leg_pose_001"
+
+    for suffix in ("U90", "F90", "B70", "F45U90"):
+        assert cmds.attributeQuery(
+            "lf_hip_" + suffix, node=leg_group, exists=True
+        ), u"大腿缺少属性：{}".format(suffix)
+
+    assert not cmds.attributeQuery(
+        "lf_hip_D45", node=leg_group, exists=True
+    ), u"大腿不该有 D45"
 
     print(u"[ok] 一键生成全部：{}".format(part_keys))
 
