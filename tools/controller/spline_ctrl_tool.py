@@ -11,10 +11,8 @@ u"""曲线控制器工具。
     │  ☐ 按跨度数重建曲线               │
     │  跨度数 [ 5 ]  次数 [ 3 ]         │
     │  控制点 ≈ 8 个（跨度数 + 3）      │
-    │  ☑ 创建 IK 变形链                 │
-    │  变形骨骼 [跟随控制点]            │
+    │  ☑ 创建变形骨骼（跟随控制器）     │
     │  ☐ 创建 FK 控件（摆造型用）       │
-    │  ☑ 跳过首尾控制点                 │
     ├─────────────────────────────────┤
     │ 控制器名称  [spline            ] │
     ├─────────────────────────────────┤
@@ -26,10 +24,9 @@ u"""曲线控制器工具。
 
     grp_md_<part>_rig_001
     ├─ grp_md_<part>_jnt_001                骨骼组（默认隐藏）
-    │   ├─ jnt_md_<part>_bind_001 …
-    │   └─ ikh_md_<part>_ik_001             spline IK handle（隐藏）
+    │   └─ jnt_md_<part>_bind_001 …         每根关节绑一个控制器
     ├─ grp_md_<part>_crv_001                曲线组（默认隐藏）
-    │   └─ crv_md_<part>_spline_001         变形曲线（CV 被控制器驱动）
+    │   └─ crv_md_<part>_spline_001         参考曲线（只用来排控制器）
     └─ grp_md_<part>_ctrl_001               控制器组（唯一默认可见的）
         ├─ zero_md_<part>_main_001          主控制器，位置在曲线最低点
         │   ├─ driven / space / connect / offset
@@ -49,7 +46,7 @@ FK 控件（可选）：
 
     FK 挂在主控制器的 output 下，主控一动整串跟着走，不会留在起始位置
     （不然切到 FK 时看起来就像「回到默认形状」了）。
-    转一节 FK，后面的控制点跟着甩，曲线被带着弯，spline IK 再跟上。
+    转一节 FK，后面的控制点跟着甩，关节再跟着控制器走。
 
     FK 只作用在「曲线控制点」这一层，不去和 IK 抢骨骼，所以两套是叠加关系：
     比例驱动负责跟随主控，FK 负责手动摆造型，可以同时用、不会互相丢姿态。
@@ -93,14 +90,20 @@ FK 控件（可选）：
     骨骼原地保留并更新位置 —— 这样已经刷好的蒙皮权重不会丢。
     骨骼数量变了才会整套重建（这时候蒙皮需要重新做）。
 
-形变层（勾选 IK 时创建）：
+形变层（勾选「创建变形骨骼」时创建）：
 
-    ctrl_md_<part>_sub_N.output → cluster → crv_md_<part>_spline_001.cv
-    crv_md_<part>_spline_001 → spline IK → jnt_md_<part>_bind_*
+    ctrl_md_<part>_sub_N ──pointConstraint──> jnt_md_<part>_bind_N
 
-    控制器带着曲线 CV 走，曲线平滑弯曲，骨骼靠 IK 跟随。
-    骨骼长度由 IK 保证，所以绳子会弯，但不会被拉长。
+    关节链本身是连着的（骨骼显示正常），但每根关节直接绑到对应控制器上，
+    不经过曲线、不用 spline IK —— 控制器摆到哪，关节就跟到哪。
     骨骼做完蒙皮就能驱动布料。
+
+控制器位置：
+
+    主控制器、小控制器和骨骼都按「沿曲线等弧长」排布，不取 CV 位置。
+    CV 是控制多边形的顶点，重建只保证参数均匀、不保证弧长均匀，
+    曲率大的地方会挤在一起——直接拿它当控制器位置，间距就忽长忽短。
+    CV 仍然由簇绑在对应控制器上，控制器的位置不影响驱动。
 
 编号规则：
 
@@ -147,12 +150,12 @@ FK 控件（可选）：
     比如 5 个控制器是 0.2 / 0.4 / 0.6 / 0.8 / 1.0，
     和主控制器同位置的那个给满 1.0，最远的给 0.2。
 
-首尾跳过：
+跳过第 2 / 倒数第 2 个控制点（固定行为，界面不提供开关）：
 
-    勾上「跳过首尾控制点」时，曲线首尾两个 CV 不建控制器、不绑簇，
-    关节也只在中间那段曲线上分布。曲线本身形状不变。
+    默认勾上。这两个点紧挨着曲线两端，控制器放上去会挤在一起、不好点选，
+    所以不建控制器、不绑簇。首尾两个点仍然有控制器。
 
-    这两端通常一个是根（跟着头或身体走）、一个是末梢，不需要单独控制。
+    曲线本身形状不变；关节仍然跨整条曲线等弧长分布。
 
 通道盒分组：
     主控制器的属性按组分段，段与段之间插一条不可 K 的分隔属性：
@@ -192,18 +195,18 @@ DEFAULT_PART = "spline"
 DEFAULT_SPANS = 5
 DEFAULT_DEGREE = 3
 
-# 外观：主控制器给一个四向箭头，小控制器用圆形，颜色区分开。
-MAIN_SHAPE = "arrow_4way_circle3"
+# 外观：主控制器给一个明显更大的方块；IK（次级）用方块，FK 用圆环，和身体模块保持一致。
+MAIN_SHAPE = "cube"
 MAIN_COLOR = 17
-MAIN_SIZE = 2.0
+MAIN_SIZE = 2.5
 
-SUB_SHAPE = "circle"
+SUB_SHAPE = "cube"
 SUB_COLOR = 13
 SUB_SIZE = 0.8
 
 # FK 控件：串成父子链，挂在主控制器下面，用来手动摆造型。
-# 用方形，和圆形的比例控制器一眼能分开。
-FK_SHAPE = "square_rounded"
+# 全局约定 IK 方块、FK 圆环，所以这里用圆形，和比例控制器（方块）一眼能分开。
+FK_SHAPE = "circle"
 FK_COLOR = 6
 FK_SIZE = 1.1
 
@@ -292,8 +295,8 @@ def get_control_points(curve, rebuild, spans, degree):
     u"""生成一条专用的变形曲线，并返回它的控制点。
 
     为什么要专用曲线：
-        曲线后面要被控制器驱动 CV、还要作为 spline IK 的输入。
-        直接拿用户原本那条，会把原曲线改坏，而且重建时也会污染输入。
+        曲线只用来排控制器位置，不参与形变。
+        直接拿用户原本那条，重建时会把原曲线改坏，而且也会污染输入。
 
     重建时按「跨度数 + 次数」交给 Maya 的 rebuildCurve；
     不重建时复制一条（CV 数量和形状都保持原样）。
@@ -578,116 +581,65 @@ def connect_ratio(main_ctrl, driven_group, part, index, total,
 
 
 # ----------------------------------------------------------------------
-# 形变层：骨骼 + spline IK
+# 形变层：关节直接跟随控制器
 # ----------------------------------------------------------------------
 
-def create_deform_chain(part, points, ctrl_names, curve, joint_group,
-                        joint_count=None, reuse_joints=False,
-                        cv_offset=0, bounds=None):
-    u"""创建骨骼链 + spline IK，并把曲线 CV 绑到控制器上。
+def create_deform_chain(part, points, ctrl_names, joint_group,
+                        reuse_joints=False):
+    u"""创建变形骨骼，每根关节直接挂在对应控制器的 output 组下。
 
-    流程：
+    结构：
 
-        控制器 output → cluster → 曲线 CV
-        曲线 → spline IK → 骨骼链 → （蒙皮后驱动布料）
+        ctrl_md_<part>_sub_N
+        └─ output_md_<part>_sub_N
+            └─ jnt_md_<part>_bind_N
 
-    骨骼数量可以和控制点数量不同：
-    控制器少一点好摆，骨骼多一点形变才顺。骨骼初始位置沿控制点折线等弧长分布，
-    建好 spline IK 之后会自动贴合到曲线上。
+    用父级而不是约束：少一堆节点，控制器怎么动关节就怎么动。
+    关节不再是首尾相连的一条链，但每根都挂在控制器下面，
+    蒙皮只看每根关节的世界矩阵，所以照样能驱动布料。
 
     Args:
         part (str): 部位 token。
-        points (list): 控制点，与 ctrl_names 一一对应。
-        ctrl_names (list): 小控制器名，顺序与 points 一致。
-        curve (str): 变形曲线。
-        joint_group (str): 骨骼组，骨骼和 ikHandle 都挂在这里。
-        joint_count (int | None): 变形骨骼数量；None 表示跟控制点数量一致。
-        reuse_joints (bool): True 表示骨骼已存在，只更新位置不重建。
-            重建时保住骨骼，蒙皮权重就不会丢。
+        points (list): 关节位置，与 ctrl_names 一一对应。
+        ctrl_names (list): 控制器名，顺序与 points 一致。
+        joint_group (str): 骨骼组，新建时先建在这里。
+        reuse_joints (bool): True 表示骨骼已存在，不重建，只重新挂父级。
 
     Returns:
-        dict: ``joints`` / ``ik_handle`` / ``clusters``。
+        dict: ``joints`` / ``ik_handle``（恒为 None）。
 
     Raises:
-        RuntimeError: 打簇或建 IK 失败。
-        ValueError: 骨骼数量不合法。
+        RuntimeError: 骨骼创建失败，或数量对不上。
     """
 
-    shape = curve_utils.get_curve_shape(curve)
+    total = len(ctrl_names)
 
-    # ---- 1. 骨骼链：数量可调，位置沿曲线等弧长分布 ----
-    total_joints = len(points) if not joint_count else int(joint_count)
-
-    try:
-        joint_points = curve_utils.sample_curve_points(
-            curve, total_joints, bounds=bounds)
-    except RuntimeError as error:
-        # 采样失败就退回控制点折线：宁可略偏，也别让整套建不出来。
-        cmds.warning(str(error))
-        joint_points = curve_utils.space_points_on_polyline(points, total_joints)
+    if len(points) != total:
+        raise RuntimeError(
+            u"控制器和关节数量对不上：{} vs {}".format(len(points), total))
 
     joint_names = [
         make_name("jnt", part, "bind", index)
-        for index in range(1, total_joints + 1)
+        for index in range(1, total + 1)
     ]
 
-    if reuse_joints:
-        # 骨骼已经在场景里，只把位置更新到新控制点上。
-        for joint_name, point in zip(joint_names, joint_points):
-            cmds.xform(joint_name, worldSpace=True, translation=point)
-    else:
+    if not reuse_joints:
         jnt_utils.JntChain.create_chain(
-            joint_points,
+            points,
             names=joint_names,
             parent=joint_group,
             radius=0.2
         )
 
-    # ---- 2. 曲线 CV 绑到控制器 ----
-    # CV 和控制器同位置，所以 cluster handle 直接挂到控制器 output 下就跟随，
-    # 不需要再加约束。簇只用来绑定，不需要显示。
-    clusters = []
-
-    for index, ctrl_name in enumerate(ctrl_names):
-        # 跳过首尾时，控制器只对应中间的 CV，所以要加偏移。
-        cv = "{}.cv[{}]".format(shape, cv_offset + index)
-        result = cmds.cluster(cv, name=make_name("clu", part, "cv", index + 1))
-
-        if not result:
-            raise RuntimeError(u"给曲线 CV 打簇失败：{}".format(cv))
-
-        handle = result[1]
+    # ---- 每根关节挂到对应控制器的 output 下 ----
+    # 重复构建时再挂一次是幂等的，位置由父级决定，不需要另外挪。
+    for ctrl_name, joint_name in zip(ctrl_names, joint_names):
         output_name = ctrl_name.replace("ctrl_", "output_", 1)
-        hierarchy_utils.parent_keep_world(handle, output_name)
-        cmds.setAttr(handle + ".visibility", 0)
-        clusters.append(handle)
-
-    # ---- 3. spline IK ----
-    ik_result = cmds.ikHandle(
-        name=make_name("ikh", part, "ik", 1),
-        startJoint=joint_names[0],
-        endEffector=joint_names[-1],
-        solver="ikSplineSolver",
-        curve=shape,
-        createCurve=False
-    )
-
-    if not ik_result:
-        raise RuntimeError(u"创建 spline IK 失败：{}".format(part))
-
-    ik_handle = ik_result[0]
-
-    # 打开扭转控制，避免骨骼沿曲线翻滚；scene up 不需要额外矩阵节点。
-    cmds.setAttr(ik_handle + ".dTwistControlEnable", 1)
-    cmds.setAttr(ik_handle + ".dWorldUpType", 0)
-
-    hierarchy_utils.parent_keep_world(ik_handle, joint_group)
-    cmds.setAttr(ik_handle + ".visibility", 0)
+        hierarchy_utils.parent_keep_world(joint_name, output_name)
 
     return {
         "joints": joint_names,
-        "ik_handle": ik_handle,
-        "clusters": clusters,
+        "ik_handle": None,
     }
 
 
@@ -935,7 +887,7 @@ def create_spline_ctrl(part_name=DEFAULT_PART, crv_name=None,
                        rebuild=False, spans=DEFAULT_SPANS,
                        degree=DEFAULT_DEGREE,
                        drive_mode=DRIVE_MODE_RATIO,
-                       skip_ends=True, joint_count=None,
+                       skip_points=True,
                        with_fk=False, with_ik=True):
     u"""按曲线创建一整套带主控制器的次级控制器。
 
@@ -946,10 +898,9 @@ def create_spline_ctrl(part_name=DEFAULT_PART, crv_name=None,
         spans (int): 重建时的跨度数（对应 Maya 重建选项里的「跨度数」）。
         degree (int): 重建时的阶数（对应「次数」）。
         drive_mode (str): ``ratio`` 比例位移 / ``chain`` 父子链。
-        skip_ends (bool): 是否跳过曲线首尾两个控制点（不在那里建控制器和关节）。
-        joint_count (int | None): 变形骨骼数量；None 表示跟控制点一致。
+        skip_points (bool): 是否跳过第 2 个和倒数第 2 个控制点。
         with_fk (bool): 是否额外创建一串 FK 控制器（摆造型用）。
-        with_ik (bool): 是否创建骨骼 + spline IK 形变层。
+        with_ik (bool): 是否创建变形骨骼（每根关节跟一个控制器）。
 
     Returns:
         dict: ``root`` / ``curve`` / ``main_ctrl`` / ``pos`` /
@@ -984,17 +935,31 @@ def create_spline_ctrl(part_name=DEFAULT_PART, crv_name=None,
     # 点位要在删除旧结果之前取好。
     points, work_curve = get_control_points(curve, rebuild, spans, degree)
 
-    # 首尾控制点通常一个是根、一个是末梢，不需要控制器和关节。
-    # 曲线照样保留它们，只是不在那两个点上建东西。
-    if skip_ends and len(points) > 3:
-        ctrl_points = list(points[1:-1])
-        # 曲线 CV 也要从第二个开始绑，跳过首尾那两个
-        cv_offset = 1
-        joint_bounds = (ctrl_points[0], ctrl_points[-1])
+    # 跳过第 2 个和倒数第 2 个控制点：这两个点贴着两端，放控制器挤在一起不好用。
+    # 曲线本身不动，只是不在那两点上建控制器、不绑簇。
+    if skip_points and len(points) > 3:
+        skipped = {1, len(points) - 2}
+        cv_indices = [index for index in range(len(points)) if index not in skipped]
     else:
-        ctrl_points = list(points)
-        cv_offset = 0
-        joint_bounds = None
+        cv_indices = list(range(len(points)))
+
+    # 控制器位置：沿弧长等距取点，不直接拿 CV。
+    # CV 只是控制多边形的顶点，重建只保证参数均匀、不保证弧长均匀——
+    # 曲率大的地方 CV 会挤在一起，直接拿 CV 放控制器，间距就忽长忽短。
+    # 簇仍然绑在原 CV 上（见 create_deform_chain 的 cv_indices）：
+    # 控制器不需要和 CV 同位置，动控制器时 CV 一样跟着走。
+    ctrl_bounds = (points[cv_indices[0]], points[cv_indices[-1]])
+
+    try:
+        ctrl_points = curve_utils.sample_curve_points(
+            work_curve,
+            len(cv_indices),
+            bounds=ctrl_bounds
+        )
+    except RuntimeError as error:
+        # 采样失败就退回 CV 位置：宁可略不匀，也别让整套建不出来。
+        cmds.warning(str(error))
+        ctrl_points = [points[index] for index in cv_indices]
 
     names = {
         "root": make_name("grp", part, "rig"),
@@ -1025,12 +990,12 @@ def create_spline_ctrl(part_name=DEFAULT_PART, crv_name=None,
             "ctrl": make_name("grp", part, "ctrl"),
         }
 
-        total_joints = joint_count if joint_count else len(ctrl_points)
+        # 关节数量 = 控制器数量（每根关节跟一个控制器）
+        total_joints = len(ctrl_points)
         joint_names = [
             make_name("jnt", part, "bind", index)
             for index in range(1, total_joints + 1)
         ]
-        ik_handle_name = make_name("ikh", part, "ik", 1)
 
         # 重建时尽量保住骨骼：蒙皮权重挂在骨骼上，骨骼一删权重就废了。
         # 骨骼名和数量都能对上，就只更新位置，不重建。
@@ -1041,15 +1006,12 @@ def create_spline_ctrl(part_name=DEFAULT_PART, crv_name=None,
         )
 
         if reuse_joints:
-            # 只清掉引用旧曲线的 ikHandle、控制器组和曲线组，骨骼留着。
-            if cmds.objExists(ik_handle_name):
-                cmds.delete(ik_handle_name)
-
+            # 只清掉控制器组和曲线组，骨骼留着。
             for doomed in (groups["ctrl"], groups["crv"]):
                 if cmds.objExists(doomed):
                     cmds.delete(doomed)
         elif cmds.objExists(names["root"]):
-            # 骨骼对不上（数量变了或之前没建 IK），只能整套重建。
+            # 骨骼对不上（数量变了或之前没建），只能整套重建。
             cmds.delete(names["root"])
 
         root = hierarchy_utils.ensure_group(names["root"])
@@ -1218,7 +1180,7 @@ def create_spline_ctrl(part_name=DEFAULT_PART, crv_name=None,
         # 父子链是倒着建的，统一按编号升序归档，后面绑 CV 时才好反序。
         result["controls"].sort()
 
-        # ---- 形变层：骨骼 + spline IK ----
+        # ---- 形变层：每根关节跟一个控制器 ----
         # 控制器顺序是反的（001 在末端），但曲线 CV 的顺序是正向的，
         # 所以这里要把控制器列表反过来，才能和 cv[0..N-1] 一一对应。
         if with_ik:
@@ -1226,12 +1188,8 @@ def create_spline_ctrl(part_name=DEFAULT_PART, crv_name=None,
                 part,
                 ctrl_points,
                 list(reversed(result["controls"])),
-                work_curve,
                 groups["jnt"],
-                joint_count=joint_count,
-                reuse_joints=reuse_joints,
-                cv_offset=cv_offset,
-                bounds=joint_bounds
+                reuse_joints=reuse_joints
             )
             result["joints"] = deform["joints"]
             result["ik_handle"] = deform["ik_handle"]
@@ -1242,6 +1200,15 @@ def create_spline_ctrl(part_name=DEFAULT_PART, crv_name=None,
             names["main_ctrl"], "show_jnt", groups["jnt"], 0)
         add_visibility_switch(
             names["main_ctrl"], "show_crv", groups["crv"], 0)
+
+        # 关节是挂在控制器下面的，不在 jnt 组里，
+        # 所以 show_jnt 还要单独接到每根关节的 visibility 上。
+        for joint_name in result["joints"]:
+            cmds.connectAttr(
+                "{}.show_jnt".format(names["main_ctrl"]),
+                "{}.visibility".format(joint_name),
+                force=True
+            )
     finally:
         cmds.undoInfo(closeChunk=True)
 
@@ -1330,36 +1297,13 @@ class SplineCtrlWindow(MayaQWidgetBaseMixin, QtWidgets.QWidget):
         self.rebuild_check.toggled.connect(self.spans_spin.setEnabled)
 
         self.ik_check = QtWidgets.QCheckBox(
-            u"创建 IK 变形链（骨骼 + spline IK）"
+            u"创建变形骨骼（跟随控制器）"
         )
         self.ik_check.setChecked(True)
         layout.addWidget(self.ik_check)
 
-        # 骨骼数量可以和控制点不同：控制器少一点好摆，骨骼多一点形变才顺。
-        # 值 0 显示成「跟随控制点」，表示两者数量一致。
-        self.joints_spin = QtWidgets.QSpinBox()
-        self.joints_spin.setRange(0, 200)
-        self.joints_spin.setSpecialValueText(u"跟随控制点")
-        self.joints_spin.setValue(0)
-        self.joints_spin.setEnabled(False)
-
-        joints_row = QtWidgets.QHBoxLayout()
-        joints_row.addWidget(QtWidgets.QLabel(u"变形骨骼"))
-        joints_row.addWidget(self.joints_spin)
-        joints_row.addStretch()
-        layout.addLayout(joints_row)
-
-        # 不建 IK 时骨骼数量没有意义，跟着一起灰掉。
-        self.ik_check.toggled.connect(self.joints_spin.setEnabled)
-
         self.fk_check = QtWidgets.QCheckBox(u"创建 FK 控件（摆造型用）")
         layout.addWidget(self.fk_check)
-
-        self.skip_ends_check = QtWidgets.QCheckBox(u"跳过首尾控制点")
-        self.skip_ends_check.setChecked(True)
-        self.skip_ends_check.setToolTip(
-            u"曲线两端的 CV 不建控制器和关节，留给根和末梢")
-        layout.addWidget(self.skip_ends_check)
 
         return group
 
@@ -1441,8 +1385,7 @@ class SplineCtrlWindow(MayaQWidgetBaseMixin, QtWidgets.QWidget):
                 rebuild=self.rebuild_check.isChecked(),
                 spans=self.spans_spin.value(),
                 degree=DEFAULT_DEGREE,
-                skip_ends=self.skip_ends_check.isChecked(),
-                joint_count=self.joints_spin.value() or None,
+                skip_points=True,
                 with_fk=self.fk_check.isChecked(),
                 with_ik=self.ik_check.isChecked()
             )
@@ -1454,7 +1397,7 @@ class SplineCtrlWindow(MayaQWidgetBaseMixin, QtWidgets.QWidget):
         deform = u""
 
         if result["joints"]:
-            deform = u"，{} 根骨骼 + spline IK".format(len(result["joints"]))
+            deform = u"，{} 根骨骼（跟随控制器）".format(len(result["joints"]))
 
         if result["ratios"]:
             preview = u"、".join(result["ratios"][:3])

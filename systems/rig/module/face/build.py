@@ -6,11 +6,11 @@ u"""面部生成流程：模型 → 定位器 → 三层头 → 基础绑定。
     from muziRigTool.systems.rig.module.face.build import FaceBuild
 
     builder = FaceBuild({
-        "head_mesh": "mesh_md_face_source_001",
-        "eye_meshes": ["mesh_lf_eye_001", "mesh_rt_eye_001"],
-        "teeth_meshes": ["mesh_md_teeth_upper_001", "mesh_md_teeth_lower_001"],
-        "tongue_mesh": "mesh_md_tongue_001",
-        "mouth_mesh": "mesh_md_mouth_001",
+        "head_mesh": "geo_md_face_source_001",
+        "eye_meshes": ["geo_lf_eye_main_001", "geo_rt_eye_main_001"],
+        "teeth_meshes": ["geo_md_teeth_upper_main_001", "geo_md_teeth_lower_main_001"],
+        "tongue_mesh": "geo_md_tongue_main_001",
+        "mouth_mesh": "geo_md_mouth_main_001",
         "lip_count": 8,
     })
     result = builder.build()

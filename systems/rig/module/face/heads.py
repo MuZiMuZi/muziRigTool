@@ -48,9 +48,9 @@ def head_names(side="md"):
     u"""三层头 + 两个 blendshape 节点的固定名字。"""
 
     return {
-        "tweak": _name("mesh", "tweak", side),
-        "corrective": _name("mesh", "corrective", side),
-        "stretch": _name("mesh", "stretch", side),
+        "tweak": _name("geo", "tweak", side),
+        "corrective": _name("geo", "corrective", side),
+        "stretch": _name("geo", "stretch", side),
         "tweak_to_corrective": _name("bsn", "tweak2corr", side),
         "corrective_to_stretch": _name("bsn", "corr2stretch", side),
     }
@@ -190,7 +190,7 @@ def build_pin_head(stretch, side="md", follow="squash"):
     if not cmds.objExists(stretch):
         raise RuntimeError(u"找不到 stretch 头：{}".format(stretch))
 
-    pin_name = _name("mesh", "pin", side)
+    pin_name = _name("geo", "pin", side)
     bs_name = _name("bsn", "stretch2pin", side)
 
     if cmds.objExists(pin_name):
@@ -255,10 +255,20 @@ def copy_skin_weights(source, target):
     destination = skin_of(target)
 
     if not destination:
+        # skinCluster 名 = 模型名把 type 段换成 skin，其余四段照抄：
+        #     geo_md_face_stretch_001 -> skin_md_face_stretch_001
+        # 过渡期场景里可能还留着 mesh_ 前缀，一并兼容，避免出现 skin_mesh_...。
+        bare = target.split("|")[-1]
+
+        for prefix in ("geo_", "mesh_"):
+            if bare.startswith(prefix):
+                bare = bare[len(prefix):]
+                break
+
         destination = cmds.skinCluster(
             influence, target_shapes[0],
             toSelectedBones=True,
-            name="skin_{}".format(target.replace("mesh_", ""))
+            name="skin_{}".format(bare)
         )[0]
 
     cmds.copySkinWeights(

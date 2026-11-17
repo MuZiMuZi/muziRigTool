@@ -36,7 +36,6 @@ CORE_PATH = os.path.join(
     PACKAGE_PARENT,
     "muziRigTool",
     "core",
-    "rigging",
     "jntbas_utils.py",
 )
 

@@ -61,7 +61,7 @@ def _sample_curve(curve, count):
 
 
 def build_zip_patch(upper_locators, lower_locators, count=8,
-                    name="mesh_md_lip_zip_001"):
+                    name="geo_md_lip_zip_001"):
     u"""用嘴唇定位器生成 zip 面片。
 
     Args:

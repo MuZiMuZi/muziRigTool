@@ -67,6 +67,7 @@ hidden_transform_attrs = (
 part_category = {
     "shoulder": "arm",
     "clavicle": "arm",
+    "scapula": "arm",
     "arm": "arm",
     "elbow": "arm",
     "wrist": "arm",
@@ -107,6 +108,31 @@ eight_direction_angle_overrides = {
     "shoulder": {"down": 45},
 }
 
+# 八方向每部位的方向定义：(方向名, 属性后缀, [(轴, 符号, 角度)])
+# 轴 "a" = axes[0]（上下，默认 rotateY），"b" = axes[1]（前后，默认 rotateZ）
+eight_direction_defs = {
+    "shoulder": (
+        ("up", "U90", (("a", -1, 90),)),
+        ("down", "D45", (("a", 1, 45),)),
+        ("front", "F90", (("b", 1, 90),)),
+        ("back", "B70", (("b", -1, 70),)),
+        ("front_up_90", "F45U90", (("a", -1, 90), ("b", 1, 45))),
+        ("front_up_45", "F45U45", (("a", -1, 45), ("b", 1, 45))),
+        ("back_up_45", "B45U45", (("a", -1, 45), ("b", -1, 45))),
+        ("back_up_90", "B45U90", (("a", -1, 90), ("b", -1, 45))),
+    ),
+    "hip": (
+        ("up", "U90", (("a", -1, 90),)),
+        ("front", "F90", (("b", 1, 90),)),
+        ("back", "B70", (("b", -1, 70),)),
+        ("front_up_90", "F45U90", (("a", -1, 90), ("b", 1, 45))),
+    ),
+}
+
+eight_direction_defs = dict(eight_direction_defs)
+eight_direction_defs["arm"] = eight_direction_defs["shoulder"]
+eight_direction_defs["thigh"] = eight_direction_defs["hip"]
+
 # 八方向门控只适合两轴大范围摆动的部位：上臂（Shoulder）与大腿（Hip）。
 # arm / thigh 是五段式命名下的等价写法，保留兼容。
 eight_direction_parts = ("shoulder", "arm", "hip", "thigh")
@@ -114,7 +140,7 @@ eight_direction_parts = ("shoulder", "arm", "hip", "thigh")
 # 四肢单轴多角度（前弯）：肘 / 膝。属性 F45 / F90 / F120，独立叠加。
 multi_angle_parts = {
     "elbow": {"axis": "rotateZ", "sign": 1, "angles": (45, 90, 120)},
-    "knee": {"axis": "rotateX", "sign": 1, "angles": (45, 90, 120)},
+    "knee": {"axis": "rotateZ", "sign": 1, "angles": (45, 90, 120)},
 }
 
 # 单轴部位用骨骼链向量夹角驱动，IK / FK 都有效。
@@ -141,6 +167,7 @@ four_twist_parts = {
         ),
         "twist_axis": "rotateX",
         "twist_angle": 179,
+        "twist_gate_angle": 45.0,
     },
     "ankle": {
         "swing_axes": ("rotateY", "rotateZ"),
@@ -152,6 +179,7 @@ four_twist_parts = {
         ),
         "twist_axis": "rotateX",
         "twist_angle": 179,
+        "twist_gate_angle": 45.0,
     },
 }
 
@@ -177,19 +205,26 @@ spine_controllers = {
 }
 swing_parts = {
     "clavicle": {
-        "controller": "FKClavicle",
         "swing_axes": ("rotateY", "rotateZ"),
         "directions": (
             ("up", "U", 45, -1),
-            ("down", "D", 45, 1),
             ("front", "F", 45, 1),
+            ("back", "B", 45, -1),
+        ),
+    },
+    "scapula": {
+        "swing_axes": ("rotateY", "rotateZ"),
+        "directions": (
+            ("up", "U", 45, -1),
+            ("front", "F", 45, 1),
+            ("back", "B", 45, -1),
         ),
     },
 }
 
 # 本轮支持一键生成的全部部位（手指按整指入口单独处理）。
 supported_parts = (
-    "shoulder", "arm", "hip", "thigh", "clavicle",
+    "shoulder", "arm", "hip", "thigh", "clavicle", "scapula",
     "elbow", "knee", "wrist", "ankle",
     "spine1", "chest",
 )
@@ -202,6 +237,8 @@ adv_joint_map = {
     "Shoulder_R": ("rt", "shoulder", "arm"),
     "Clavicle_L": ("lf", "clavicle", "arm"),
     "Clavicle_R": ("rt", "clavicle", "arm"),
+    "Scapula_L": ("lf", "scapula", "arm"),
+    "Scapula_R": ("rt", "scapula", "arm"),
     "Elbow_L": ("lf", "elbow", "arm"),
     "Elbow_R": ("rt", "elbow", "arm"),
     "Wrist_L": ("lf", "wrist", "arm"),
@@ -734,7 +771,18 @@ def build_network(
     if angle <= 0.0:
         raise ValueError(u"阈值角度必须大于 0，收到：{}".format(angle))
 
-    direction_names = resolve_directions(directions)
+    # 八方向用每部位自己的方向定义；旧方向名做兼容映射。
+    if directions is None:
+        direction_names = None
+    else:
+        legacy_names = {
+            "front_up": "front_up_45",
+            "back_up": "back_up_45",
+        }
+        direction_names = set(
+            legacy_names.get(name, name) for name in directions
+        )
+
     angle_map = _resolve_angle_map(angle, angle_map)
 
     if category == "finger":
@@ -778,29 +826,33 @@ def build_network(
             created_nodes
         )
 
-        gates = {
-            "up": _build_gate(
-                part_key, "up", delta_a, -1, angle_map["up"], created_nodes
-            ),
-            "down": _build_gate(
-                part_key, "down", delta_a, 1, angle_map["down"], created_nodes
-            ),
-            "front": _build_gate(
-                part_key, "front", delta_b, 1, angle_map["front"], created_nodes
-            ),
-            "back": _build_gate(
-                part_key, "back", delta_b, -1, angle_map["back"], created_nodes
-            ),
-        }
+        direction_defs = [
+            item for item in eight_direction_defs[part]
+            if direction_names is None or item[0] in direction_names
+        ]
 
-        free_a = _build_free(
-            part_key, "a", [gates["up"], gates["down"]], created_nodes
-        )
-        free_b = _build_free(
-            part_key, "b", [gates["front"], gates["back"]], created_nodes
-        )
+        gate_cache = {}
 
-        combo_sources = _combo_sources(gates, free_a, free_b)
+        def get_gate(axis, sign, gate_angle):
+            key = (axis, sign, gate_angle)
+
+            if key in gate_cache:
+                return gate_cache[key]
+
+            delta = delta_a if axis == "a" else delta_b
+            gate = _build_gate(
+                part_key,
+                "{}s{}a{}".format(
+                    axis, "p" if sign > 0 else "n", int(gate_angle)
+                ),
+                delta,
+                sign,
+                gate_angle,
+                created_nodes,
+            )
+            gate_cache[key] = gate
+
+            return gate
 
         separator = "sep_" + part_key
         _add_separator(group, separator)
@@ -808,32 +860,37 @@ def build_network(
 
         attribute_names = {}
 
-        for direction in direction_names:
-            attribute = part_key + "_" + _direction_suffix(part, direction)
+        for direction, suffix, components in direction_defs:
+            attribute = part_key + "_" + suffix
             _add_weight_attr(group, attribute)
             added_attrs.append(attribute)
             attribute_names[direction] = attribute
 
         indicator = _create_indicator(joint, part_key, created_nodes)
 
-        for direction in direction_names:
-            first, second = combo_sources[direction]
-            combo = _create(
-                "mult_" + part_key + "_out" + _camel_case(direction) + "_001",
-                "multDoubleLinear",
-                created_nodes,
-            )
+        for direction, suffix, components in direction_defs:
+            sources = [
+                get_gate(axis, sign, gate_angle)
+                for axis, sign, gate_angle in components
+            ]
 
-            cmds.connectAttr(first, combo + ".input1")
-            cmds.connectAttr(second, combo + ".input2")
+            if len(sources) == 1:
+                combo_output = sources[0]
+            else:
+                combo = _create(
+                    "mult_" + part_key + "_out" + _camel_case(direction) + "_001",
+                    "multDoubleLinear",
+                    created_nodes,
+                )
+                cmds.connectAttr(sources[0], combo + ".input1")
+                cmds.connectAttr(sources[1], combo + ".input2")
+                combo_output = combo + ".output"
 
-            # 方向门输出 → driven key 曲线 → 组属性。
-            # 曲线留给绑定师在 Graph Editor 里自己调过渡。
             _create_driven_key(
                 group + "." + attribute_names[direction],
-                combo + ".output",
+                combo_output,
                 part_key,
-                _direction_suffix(part, direction),
+                suffix,
                 created_nodes,
             )
 
@@ -845,7 +902,7 @@ def build_network(
             "axes": list(axes),
             "angle": angle,
             "angle_map": dict(angle_map),
-            "directions": list(direction_names),
+            "directions": [item[0] for item in direction_defs],
             "neutral": neutral,
             "separator": separator,
             "attributes": attribute_names,
@@ -883,7 +940,7 @@ def build_network(
         "axes": list(axes),
         "angle": angle,
         "angle_map": dict(angle_map),
-        "directions": list(direction_names),
+        "directions": [item[0] for item in direction_defs],
         "neutral": dict(neutral),
         "separator": separator,
         "attributes": dict(attribute_names),
@@ -1331,13 +1388,14 @@ def _build_spine(joint, side, part, category, neutral_inverse):
             created_nodes
         )
 
+        # 实测：前后 = rotateZ，左右 = rotateY，扭转 = rotateX
         specs = (
-            ("F45", delta_x, 1),
-            ("B45", delta_x, -1),
-            ("L45", delta_z, 1),
-            ("R45", delta_z, -1),
-            ("TwsP45", delta_y, 1),
-            ("TwsN45", delta_y, -1),
+            ("F45", delta_z, 1),
+            ("B45", delta_z, -1),
+            ("L45", delta_y, -1),
+            ("R45", delta_y, 1),
+            ("TwsP45", delta_x, 1),
+            ("TwsN45", delta_x, -1),
         )
 
         separator = "sep_" + part_key
@@ -1782,7 +1840,9 @@ def _build_four_twist(joint, side, part, category, neutral, neutral_inverse):
 
         for role, suffix, sign in twist_specs:
             gate = _build_gate(
-                part_key, role, delta_t, sign, twist_angle, created_nodes
+                part_key, role, delta_t, sign,
+                float(spec.get("twist_gate_angle", twist_angle)),
+                created_nodes
             )
             _create_driven_key(
                 group + "." + attributes[suffix],
@@ -2507,13 +2567,6 @@ def _create_driven_key(driven_plug, driver_plug, part_key, direction, nodes):
         driverValue=0.0,
         value=0.0,
     )
-    # 中间点 (0.5, 0.25)：前段平缓、后段加速，接近主人给的参考曲线
-    cmds.setDrivenKeyframe(
-        driven_plug,
-        currentDriver=driver_plug,
-        driverValue=0.5,
-        value=0.25,
-    )
     cmds.setDrivenKeyframe(
         driven_plug,
         currentDriver=driver_plug,
@@ -2526,9 +2579,9 @@ def _create_driven_key(driven_plug, driver_plug, part_key, direction, nodes):
     ) or []
 
     for curve in curves:
-        cmds.keyTangent(
-            curve, inTangentType="auto", outTangentType="auto"
-        )
+        # 只有两端关键帧、中间不留点；auto 切线得到平滑 S 形。
+        # 注意：两点曲线不能用 fixed 切线（Maya 会算出负值过冲）。
+        cmds.keyTangent(curve, inTangentType="auto", outTangentType="auto")
 
         renamed = cmds.rename(
             curve, "anim_" + part_key + "_" + direction + "_001"

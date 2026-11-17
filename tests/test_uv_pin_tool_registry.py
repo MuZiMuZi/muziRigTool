@@ -37,7 +37,6 @@ CORE_PATH = os.path.join(
     PACKAGE_PARENT,
     "muziRigTool",
     "core",
-    "rigging",
     "uv_pin_utils.py",
 )
 

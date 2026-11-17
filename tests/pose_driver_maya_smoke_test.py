@@ -53,6 +53,9 @@ def build_scene():
     clavicle_r = cmds.joint(name="Clavicle_R", position=(3, 0, 0))
 
     cmds.select(clear=True)
+    scapula_r = cmds.joint(name="Scapula_R", position=(3, 1, 0))
+
+    cmds.select(clear=True)
     cmds.createNode("transform", name="FKClavicle_R")
 
     cmds.select(clear=True)
@@ -116,6 +119,7 @@ def build_scene():
         "hip_l": hip_l,
         "hip_r": hip_r,
         "clavicle": clavicle_r,
+        "scapula": scapula_r,
         "elbow": elbow_r,
         "knee": knee_l,
         "wrist": wrist_r,
@@ -139,7 +143,7 @@ def check_find_supported():
 
     for name in (
             "Shoulder_L", "Shoulder_R", "Hip_L", "Hip_R",
-            "Clavicle_R", "Elbow_R", "Knee_L", "Wrist_R", "Ankle_L",
+            "Clavicle_R", "Scapula_R", "Elbow_R", "Knee_L", "Wrist_R", "Ankle_L",
             "IndexFinger1_R", "Spine1_M",
     ):
         assert name in found, u"没有找到：{}".format(name)
@@ -247,7 +251,7 @@ def check_attributes(result):
 
     key_values = cmds.keyframe(curves[0], query=True, valueChange=True) or []
 
-    assert key_values == [0.0, 0.25, 1.0], (
+    assert key_values == [0.0, 1.0], (
         u"曲线 key 值不对：{}".format(key_values)
     )
 
@@ -256,7 +260,7 @@ def check_attributes(result):
     ) or []
 
     assert tangents and tangents[0] == "auto", (
-        u"曲线端点切线不是 auto：{}".format(tangents)
+        u"曲线切线不是 auto：{}".format(tangents)
     )
 
     indicator = result["indicator"]
@@ -277,14 +281,14 @@ def check_weights(joint, result):
 
     group = result["group"]
 
-    cmds.setAttr(joint + ".rotateY", -45.0)
+    cmds.setAttr(joint + ".rotateY", -90.0)
     assert abs(cmds.getAttr(group + ".lf_shoulder_U90") - 1.0) < 1e-5, (
         u"阈值处 U90 不是 1"
     )
 
-    cmds.setAttr(joint + ".rotateY", -22.5)
-    assert abs(cmds.getAttr(group + ".lf_shoulder_U90") - 0.25) < 1e-5, (
-        u"半程 U90 不是 0.25（新曲线为 t² 形状）"
+    cmds.setAttr(joint + ".rotateY", -45.0)
+    assert abs(cmds.getAttr(group + ".lf_shoulder_U90") - 0.5) < 1e-5, (
+        u"半程 U90 不是 0.5（两点 S 曲线）"
     )
 
     cmds.setAttr(joint + ".rotateY", -120.0)
@@ -298,8 +302,8 @@ def check_weights(joint, result):
     assert abs(cmds.getAttr(group + ".lf_shoulder_F45U45") - 1.0) < 1e-5, (
         u"对角权重不是 1"
     )
-    assert abs(cmds.getAttr(group + ".lf_shoulder_U90")) < 1e-5, (
-        u"双轴时 U90 没有清空"
+    assert abs(cmds.getAttr(group + ".lf_shoulder_U90") - 0.5) < 1e-5, (
+        u"双轴时 U90 应为半程值（独立叠加）"
     )
 
     cmds.setAttr(joint + ".rotateY", 0.0)
@@ -326,8 +330,8 @@ def check_back_angle(joint, result):
     )
 
     cmds.setAttr(joint + ".rotateZ", -35.0)
-    assert abs(cmds.getAttr(group + ".lf_shoulder_B70") - 0.25) < 1e-5, (
-        u"后摆半程 B70 不是 0.25（新曲线为 t² 形状）"
+    assert abs(cmds.getAttr(group + ".lf_shoulder_B70") - 0.5) < 1e-5, (
+        u"后摆半程 B70 不是 0.5（两点 S 曲线）"
     )
 
     cmds.setAttr(joint + ".rotateZ", -45.0)
@@ -511,7 +515,7 @@ def check_rebuild(joint):
     )
 
     cmds.setAttr(joint + ".rotateY", -45.0)
-    assert abs(cmds.getAttr(group + ".lf_shoulder_U90") - 1.0) < 1e-5, (
+    assert abs(cmds.getAttr(group + ".lf_shoulder_U90") - 0.5) < 1e-5, (
         u"重建后权重没有恢复驱动"
     )
 
@@ -522,15 +526,19 @@ def check_rebuild(joint):
 
 
 def check_clavicle(joints):
-    u"""锁骨：F45 / U45 / D45 三方向。"""
+    u"""锁骨：F45 / B45 / U45 三方向。"""
 
     result = pose_driver_utils.build_network(joints["clavicle"])
     group = result["group"]
 
-    for suffix in ("F45", "U45", "D45"):
+    for suffix in ("F45", "B45", "U45"):
         assert "rt_clavicle_" + suffix in result["attributes"].values(), (
             u"缺少锁骨属性：{}".format(suffix)
         )
+
+    assert not cmds.attributeQuery(
+        "rt_clavicle_D45", node=group, exists=True
+    ), u"锁骨不该再有 D45"
 
     ctrl = "Clavicle_R"
 
@@ -540,13 +548,33 @@ def check_clavicle(joints):
     )
     cmds.setAttr(ctrl + ".rotateZ", 0.0)
 
+    cmds.setAttr(ctrl + ".rotateZ", -45.0)
+    assert abs(cmds.getAttr(group + ".rt_clavicle_B45") - 1.0) < 1e-5, (
+        u"锁骨 B45 不对"
+    )
+    cmds.setAttr(ctrl + ".rotateZ", 0.0)
+
     cmds.setAttr(ctrl + ".rotateY", -45.0)
     assert abs(cmds.getAttr(group + ".rt_clavicle_U45") - 1.0) < 1e-5, (
         u"锁骨 U45 不对"
     )
     cmds.setAttr(ctrl + ".rotateY", 0.0)
 
-    print(u"[ok] 锁骨：F45 / U45 / D45")
+    print(u"[ok] 锁骨：F45 / B45 / U45")
+
+
+def check_scapula(joints):
+    u"""Scapula：F45 / B45 / U45。"""
+
+    result = pose_driver_utils.build_network(joints["scapula"])
+    group = result["group"]
+
+    for suffix in ("F45", "B45", "U45"):
+        assert "rt_scapula_" + suffix in result["attributes"].values(), (
+            u"缺少肩胛骨属性：{}".format(suffix)
+        )
+
+    print(u"[ok] Scapula：F45 / B45 / U45")
 
 
 def check_finger(joints):
@@ -602,27 +630,28 @@ def check_spine(joints):
 
     joint = "Spine1_M"
 
-    cmds.setAttr(joint + ".rotateX", 45.0)
+    # 实测映射：前后 = rotateZ，左右 = rotateY，扭转 = rotateX
+    cmds.setAttr(joint + ".rotateZ", 45.0)
     assert abs(cmds.getAttr(group + ".md_spine1_F45") - 1.0) < 1e-5, (
         u"脊柱 F45 不对"
     )
-    cmds.setAttr(joint + ".rotateX", -45.0)
+    cmds.setAttr(joint + ".rotateZ", -45.0)
     assert abs(cmds.getAttr(group + ".md_spine1_B45") - 1.0) < 1e-5, (
         u"脊柱 B45 不对"
     )
-    cmds.setAttr(joint + ".rotateX", 0.0)
+    cmds.setAttr(joint + ".rotateZ", 0.0)
 
-    cmds.setAttr(joint + ".rotateZ", 45.0)
+    cmds.setAttr(joint + ".rotateY", -45.0)
     assert abs(cmds.getAttr(group + ".md_spine1_L45") - 1.0) < 1e-5, (
         u"脊柱 L45 不对"
     )
-    cmds.setAttr(joint + ".rotateZ", 0.0)
+    cmds.setAttr(joint + ".rotateY", 0.0)
 
-    cmds.setAttr(joint + ".rotateY", 45.0)
+    cmds.setAttr(joint + ".rotateX", 45.0)
     assert abs(cmds.getAttr(group + ".md_spine1_TwsP45") - 1.0) < 1e-5, (
         u"脊柱扭转不对"
     )
-    cmds.setAttr(joint + ".rotateY", 0.0)
+    cmds.setAttr(joint + ".rotateX", 0.0)
 
     print(u"[ok] 脊柱：F45 / B45 / L45 / R45 / 双向扭转")
 
@@ -635,7 +664,7 @@ def check_build_all(joints):
     )
 
     assert not errors, u"批量生成出错：{}".format(errors)
-    assert len(results) == 11, u"应该生成 11 个，实际 {}".format(len(results))
+    assert len(results) == 12, u"应该生成 12 个，实际 {}".format(len(results))
 
     part_keys = sorted(result["part_key"] for result in results)
 
@@ -649,6 +678,7 @@ def check_build_all(joints):
         "rt_elbow",
         "rt_hip",
         "rt_index",
+        "rt_scapula",
         "rt_shoulder",
         "rt_wrist",
     ], u"部位列表不对：{}".format(part_keys)
@@ -706,7 +736,7 @@ def check_delete_all():
 
     removed = pose_driver_utils.delete_all_parts()
 
-    assert removed >= 11, u"删除数量不对：{}".format(removed)
+    assert removed >= 12, u"删除数量不对：{}".format(removed)
 
     for category in ("arm", "leg"):
         group = pose_driver_utils.get_group_name(category)
@@ -721,7 +751,7 @@ def check_delete_all():
 def check_bad_input(joints):
     u"""错误输入要明确报错。"""
 
-    mesh = cmds.polyCube(name="mesh_md_body_main_001")[0]
+    mesh = cmds.polyCube(name="geo_md_body_main_001")[0]
 
     try:
         pose_driver_utils.build_network(mesh)
@@ -777,6 +807,7 @@ def main():
 
     check_limb(joints)
     check_clavicle(joints)
+    check_scapula(joints)
     check_finger(joints)
     check_spine(joints)
 
