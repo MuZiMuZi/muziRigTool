@@ -2840,6 +2840,116 @@ def add_inverse_shape_target(bsname, source_mesh, base_mesh, target_name=None):
     return bsname + ".weight[{}]".format(len(weights))
 
 
+def transfer_wrap_shapes(source_mesh, target_mesh):
+    u"""把旧模型上的 blendShape target 与连接通过 wrap 复制到新模型。
+
+    Args:
+        source_mesh (str): 旧模型（带修型与连接）。
+        target_mesh (str): 新模型（接收修型）。
+
+    Returns:
+        dict: {"blendshape": 新 BS, "targets": 新 target 数, "connections": 复制连接数}。
+    """
+
+    source_shape = (cmds.listRelatives(source_mesh, shapes=True) or [source_mesh])[0]
+    target_shape = (cmds.listRelatives(target_mesh, shapes=True) or [target_mesh])[0]
+
+    source_blendshapes = cmds.listConnections(source_shape, type="blendShape") or []
+
+    if not source_blendshapes:
+        raise RuntimeError(u"源模型上没有 blendShape")
+
+    source_bs = source_blendshapes[0]
+    weights = cmds.listAttr(source_bs + ".weight", multi=True) or []
+
+    if not weights:
+        raise RuntimeError(u"源 blendShape 没有 target")
+
+    saved = {
+        attribute: cmds.getAttr(source_bs + "." + attribute)
+        for attribute in weights
+    }
+
+    alias_list = cmds.aliasAttr(source_bs, query=True) or []
+    alias_map = {}
+
+    for index in range(0, len(alias_list) - 1, 2):
+        alias_map[alias_list[index + 1]] = alias_list[index]
+
+    target_blendshapes = cmds.listConnections(target_shape, type="blendShape") or []
+
+    if target_blendshapes:
+        target_bs = target_blendshapes[0]
+        next_index = len(cmds.listAttr(target_bs + ".weight", multi=True) or [])
+    else:
+        target_bs = cmds.blendShape(
+            target_mesh, name="blendShape_" + target_mesh.split("|")[-1]
+        )[0]
+        next_index = 0
+
+    driver = cmds.duplicate(source_mesh, rr=True)[0]
+    wrap_node = cmds.deformer(target_mesh, type="wrap")[0]
+    cmds.connectAttr(driver + ".worldMesh[0]", wrap_node + ".wrapMesh", force=True)
+
+    created = []
+    targets = 0
+
+    try:
+        for attribute in weights:
+            for name in weights:
+                cmds.setAttr(source_bs + "." + name, 0.0)
+
+            cmds.setAttr(source_bs + "." + attribute, 1.0)
+
+            shape = cmds.duplicate(target_mesh, rr=True)[0]
+            created.append(shape)
+
+            cmds.blendShape(
+                target_bs, edit=True,
+                t=(target_mesh, next_index, shape, 1.0)
+            )
+
+            alias = alias_map.get(attribute)
+
+            if alias:
+                cmds.aliasAttr(
+                    alias, target_bs + ".weight[{}]".format(next_index)
+                )
+
+            next_index += 1
+            targets += 1
+
+    finally:
+        for attribute, value in saved.items():
+            cmds.setAttr(source_bs + "." + attribute, value)
+
+        for node in created + [driver, wrap_node]:
+            if node and cmds.objExists(node):
+                cmds.delete(node)
+
+    connections = 0
+
+    for offset, attribute in enumerate(weights):
+        sources = cmds.listConnections(
+            source_bs + "." + attribute,
+            source=True, destination=False, plugs=True
+        ) or []
+
+        for source in sources:
+            cmds.connectAttr(
+                source,
+                target_bs + ".weight[{}]".format(offset),
+                force=True
+            )
+            connections += 1
+
+    return {
+        "blendshape": target_bs,
+        "targets": targets,
+        "connections": connections,
+    }
+
+
 def delete_all_parts():
     u"""删除四个汇总组上所有部位，组保留。
 
