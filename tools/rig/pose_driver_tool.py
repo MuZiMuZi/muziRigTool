@@ -46,9 +46,13 @@ class PoseDriverTool(QtWidgets.QDialog):
         delete_button = QtWidgets.QPushButton(u"删除全部")
         delete_button.clicked.connect(self.delete_all)
 
+        connect_button = QtWidgets.QPushButton(u"连接 BS")
+        connect_button.clicked.connect(self.connect_blendshapes)
+
         buttons = QtWidgets.QHBoxLayout()
         buttons.addWidget(build_button)
         buttons.addWidget(delete_button)
+        buttons.addWidget(connect_button)
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.addWidget(hint)
@@ -86,6 +90,25 @@ class PoseDriverTool(QtWidgets.QDialog):
         self.status_label.setText(
             u"已删除 {} 个部位（组一起删除）".format(removed)
         )
+
+    def connect_blendshapes(self):
+        u"""按名字把修型属性连到 blendShape target 权重。"""
+
+        try:
+            connected, missing = (
+                pose_driver_utils.connect_attributes_to_blendshapes()
+            )
+        except Exception as error:
+            cmds.warning(str(error))
+            self.status_label.setText(u"连接失败：{}".format(error))
+            return
+
+        message = u"已连接 {} 个属性到 BS".format(connected)
+
+        if missing:
+            message += u"，{} 个没匹配到 target".format(len(missing))
+
+        self.status_label.setText(message)
 
 
 _window = None

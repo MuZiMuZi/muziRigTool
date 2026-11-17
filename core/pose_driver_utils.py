@@ -2656,6 +2656,64 @@ def build_all_supported(
     return results, errors
 
 
+def connect_attributes_to_blendshapes():
+    u"""把修型属性按名字连到 blendShape 的 target 权重。
+
+    target 名（alias）与属性名一致时自动连接，例如
+    grp_md_arm_pose_001.lf_shoulder_U90 → 某个 blendShape 的 target 权重。
+
+    Returns:
+        tuple: (连接数量, 未匹配的属性名列表)。
+    """
+
+    blendshapes = cmds.ls(type="blendShape") or []
+    connected = 0
+    missing = []
+
+    for category in group_names:
+        group = get_group_name(category)
+
+        if not cmds.objExists(group):
+            continue
+
+        config = read_group_config(group)
+
+        for entry in config.values():
+            for suffix, attribute in entry.get("attributes", {}).items():
+                target = _find_blendshape_target(blendshapes, attribute)
+
+                if not target:
+                    missing.append(attribute)
+                    continue
+
+                plug = group + "." + attribute
+
+                for source in (
+                        cmds.listConnections(
+                            plug, source=True, destination=False, plugs=True
+                        ) or []
+                ):
+                    cmds.disconnectAttr(source, plug)
+
+                cmds.connectAttr(plug, target, force=True)
+                connected += 1
+
+    return connected, missing
+
+
+def _find_blendshape_target(blendshapes, target_name):
+    u"""按 target alias 找 blendShape 权重 plug；找不到返回 None。"""
+
+    for blendshape in blendshapes:
+        aliases = cmds.aliasAttr(blendshape, query=True) or []
+
+        for index in range(0, len(aliases) - 1, 2):
+            if aliases[index] == target_name:
+                return blendshape + "." + aliases[index + 1]
+
+    return None
+
+
 def delete_all_parts():
     u"""删除四个汇总组上所有部位，组保留。
 

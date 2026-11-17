@@ -567,6 +567,33 @@ def check_clavicle(joints):
     print(u"[ok] 锁骨：F45 / B45 / U45")
 
 
+def check_blendshape():
+    u"""按名字把修型属性连到 blendShape target。"""
+
+    base = cmds.polyCube(name="bs_base", width=1, height=1, depth=1)[0]
+    target = cmds.duplicate(base, name="bs_target")[0]
+    cmds.setAttr(target + ".translateY", 1.0)
+
+    blendshape = cmds.blendShape(target, base, name="bs_shoulder")[0]
+    cmds.aliasAttr("lf_shoulder_U90", blendshape + ".weight[0]")
+
+    connected, missing = pose_driver_utils.connect_attributes_to_blendshapes()
+
+    assert connected >= 1, u"没有连接任何属性到 BS"
+
+    sources = cmds.listConnections(
+        blendshape + ".weight[0]", source=True, destination=False, plugs=True
+    ) or []
+
+    assert sources and sources[0].endswith("lf_shoulder_U90"), (
+        u"BS weight 没有连到 lf_shoulder_U90：{}".format(sources)
+    )
+
+    cmds.delete(blendshape, base, target)
+
+    print(u"[ok] 修型属性 → blendShape：自动匹配连接")
+
+
 def check_knee_direction():
     u"""膝盖负向弯曲：B45 交棒、B90 到 1。"""
 
@@ -909,6 +936,7 @@ def main():
     check_legs(joints)
 
     check_build_all(joints)
+    check_blendshape()
     check_knee_direction()
     check_skirt()
     check_delete_all()
