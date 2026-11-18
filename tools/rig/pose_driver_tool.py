@@ -56,15 +56,23 @@ class PoseDriverTool(MayaQWidgetBaseMixin, QtWidgets.QDialog):
         u"""一键生成全部部位。"""
 
         try:
-            results, errors = pose_driver_utils.build_all_supported(
-                blendshape=self.blendshape_field.text().strip() or None
-            )
+            results, errors = pose_driver_utils.build_all_supported()
         except Exception as error:
             cmds.warning(str(error))
             self.status_label.setText(u"生成失败：{}".format(error))
             return
 
+        recorded = 0
+
+        try:
+            recorded = pose_driver_utils.discover_blendshapes()
+        except Exception as error:
+            cmds.warning(str(error))
+
         message = u"已生成 {} 个部位".format(len(results))
+
+        if recorded:
+            message += u"，{} 个部位记录了 BS".format(recorded)
 
         if errors:
             message += u"，失败 {} 个".format(len(errors))
