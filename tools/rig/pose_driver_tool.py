@@ -33,11 +33,6 @@ class PoseDriverTool(MayaQWidgetBaseMixin, QtWidgets.QDialog):
         self.status_label = QtWidgets.QLabel(u"就绪")
         self.status_label.setWordWrap(True)
 
-        self.blendshape_field = QtWidgets.QLineEdit()
-        self.blendshape_field.setPlaceholderText(
-            u"blendShape 节点名（可选，会记进档案）"
-        )
-
         build_button = QtWidgets.QPushButton(u"生成全部")
         build_button.clicked.connect(self.build_all)
 
@@ -54,7 +49,6 @@ class PoseDriverTool(MayaQWidgetBaseMixin, QtWidgets.QDialog):
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.addWidget(hint)
-        layout.addWidget(self.blendshape_field)
         layout.addLayout(buttons)
         layout.addWidget(self.status_label)
 

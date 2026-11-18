@@ -2661,15 +2661,71 @@ def build_all_supported(
     return results, errors
 
 
+def _find_blendshape_node(blendshapes, target_name):
+    u"""按 target alias 找对应的 blendShape 节点。"""
+
+    target = _find_blendshape_target(blendshapes, target_name)
+
+    if target:
+        return target.split(".")[0]
+
+    return None
+
+
+def discover_blendshapes():
+    u"""扫描场景里的 blendShape，把 target 名与属性名匹配的 BS 记进档案。
+
+    只在档案里还没有 BS 记录的部位上补，不覆盖已有记录。
+
+    Returns:
+        int: 新记录的部位数。
+    """
+
+    blendshapes = cmds.ls(type="blendShape") or []
+    recorded = 0
+
+    for category in group_names:
+        group = get_group_name(category)
+
+        if not cmds.objExists(group):
+            continue
+
+        config = read_group_config(group)
+        changed = False
+
+        for entry in config.values():
+            attributes = entry.get("attributes", {})
+
+            if not attributes or entry.get("blendshape"):
+                continue
+
+            for attribute in attributes.values():
+                blendshape = _find_blendshape_node(blendshapes, attribute)
+
+                if not blendshape:
+                    continue
+
+                entry["blendshape"] = blendshape
+                changed = True
+                recorded += 1
+                break
+
+        if changed:
+            _write_config(group, config)
+
+    return recorded
+
+
 def connect_attributes_to_blendshapes():
     u"""按档案里记录的 blendShape 节点连接修型属性（强制连接）。
 
-    档案（部位配置）里生成时记录了 "blendshape" 字段，
-    这里只连那个节点，不再扫描场景按同名匹配。
+    档案里没有 BS 记录时先自动扫描补一次；连接时只认档案。
 
     Returns:
         tuple: (连接数量, 未匹配的属性名列表)。
     """
+
+    discover_blendshapes()
 
     connected = 0
     missing = []
