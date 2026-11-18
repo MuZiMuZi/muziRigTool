@@ -2759,14 +2759,8 @@ def connect_attributes_to_blendshapes():
 
                 plug = group + "." + attribute
 
-                for source in (
-                        cmds.listConnections(
-                            plug, source=True, destination=False, plugs=True
-                        ) or []
-                ):
-                    cmds.disconnectAttr(source, plug)
-
-                # 强制连接：覆盖 target 上已有的连接
+                # 不能断开属性自己的输入（driven key 曲线），
+                # force=True 只会覆盖 BS weight 上的旧连接
                 cmds.connectAttr(plug, target, force=True)
                 connected += 1
 
