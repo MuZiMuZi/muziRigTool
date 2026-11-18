@@ -725,6 +725,7 @@ def build_network(
     neutral=None,
     angle_map=None,
     neutral_inverse=None,
+    blendshape=None,
 ):
     u"""构建一个部位的驱动属性与门控网络。
 
@@ -923,6 +924,7 @@ def build_network(
             "attributes": attribute_names,
             "indicator": indicator,
             "nodes": list(created_nodes),
+            "blendshape": blendshape,
         }
 
         _write_config(group, config)
@@ -2618,6 +2620,7 @@ def build_all_supported(
     angle=default_angle,
     directions=None,
     angle_map=None,
+    blendshape=None,
 ):
     u"""给场景里所有支持八方向的关节建驱动属性。
 
@@ -2626,6 +2629,7 @@ def build_all_supported(
         angle (float): 默认阈值角度。
         directions (iterable): 启用的方向。
         angle_map (dict): 每方向阈值覆盖。
+        blendshape (str): 档案记录的 blendShape 节点名，连接 BS 时按它来。
 
     Returns:
         tuple: (results, errors)，errors 是 [(关节, 错误信息), ...]。
@@ -2643,6 +2647,7 @@ def build_all_supported(
                     angle=angle,
                     directions=directions,
                     angle_map=angle_map,
+                    blendshape=blendshape,
                 )
             )
         except Exception as error:
@@ -2657,16 +2662,15 @@ def build_all_supported(
 
 
 def connect_attributes_to_blendshapes():
-    u"""把修型属性按名字连到 blendShape 的 target 权重。
+    u"""按档案里记录的 blendShape 节点连接修型属性（强制连接）。
 
-    target 名（alias）与属性名一致时自动连接，例如
-    grp_md_arm_pose_001.lf_shoulder_U90 → 某个 blendShape 的 target 权重。
+    档案（部位配置）里生成时记录了 "blendshape" 字段，
+    这里只连那个节点，不再扫描场景按同名匹配。
 
     Returns:
         tuple: (连接数量, 未匹配的属性名列表)。
     """
 
-    blendshapes = cmds.ls(type="blendShape") or []
     connected = 0
     missing = []
 
@@ -2679,8 +2683,19 @@ def connect_attributes_to_blendshapes():
         config = read_group_config(group)
 
         for entry in config.values():
-            for suffix, attribute in entry.get("attributes", {}).items():
-                target = _find_blendshape_target(blendshapes, attribute)
+            attributes = entry.get("attributes", {})
+
+            if not attributes:
+                continue
+
+            bsname = entry.get("blendshape")
+
+            if not bsname or not cmds.objExists(bsname):
+                missing.extend(attributes.values())
+                continue
+
+            for suffix, attribute in attributes.items():
+                target = _find_blendshape_target([bsname], attribute)
 
                 if not target:
                     missing.append(attribute)
@@ -2695,6 +2710,7 @@ def connect_attributes_to_blendshapes():
                 ):
                     cmds.disconnectAttr(source, plug)
 
+                # 强制连接：覆盖 target 上已有的连接
                 cmds.connectAttr(plug, target, force=True)
                 connected += 1
 

@@ -577,6 +577,12 @@ def check_blendshape():
     blendshape = cmds.blendShape(target, base, name="bs_shoulder")[0]
     cmds.aliasAttr("lf_shoulder_U90", blendshape + ".weight[0]")
 
+    # 档案里记录 BS 节点，连接时按档案来
+    group = "grp_md_arm_pose_001"
+    config = pose_driver_utils.read_group_config(group)
+    config["lf_shoulder"]["blendshape"] = blendshape
+    pose_driver_utils._write_config(group, config)
+
     connected, missing = pose_driver_utils.connect_attributes_to_blendshapes()
 
     assert connected >= 1, u"没有连接任何属性到 BS"

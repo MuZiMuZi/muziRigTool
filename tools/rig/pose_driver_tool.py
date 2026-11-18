@@ -33,6 +33,11 @@ class PoseDriverTool(MayaQWidgetBaseMixin, QtWidgets.QDialog):
         self.status_label = QtWidgets.QLabel(u"就绪")
         self.status_label.setWordWrap(True)
 
+        self.blendshape_field = QtWidgets.QLineEdit()
+        self.blendshape_field.setPlaceholderText(
+            u"blendShape 节点名（可选，会记进档案）"
+        )
+
         build_button = QtWidgets.QPushButton(u"生成全部")
         build_button.clicked.connect(self.build_all)
 
@@ -49,6 +54,7 @@ class PoseDriverTool(MayaQWidgetBaseMixin, QtWidgets.QDialog):
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.addWidget(hint)
+        layout.addWidget(self.blendshape_field)
         layout.addLayout(buttons)
         layout.addWidget(self.status_label)
 
@@ -56,7 +62,9 @@ class PoseDriverTool(MayaQWidgetBaseMixin, QtWidgets.QDialog):
         u"""一键生成全部部位。"""
 
         try:
-            results, errors = pose_driver_utils.build_all_supported()
+            results, errors = pose_driver_utils.build_all_supported(
+                blendshape=self.blendshape_field.text().strip() or None
+            )
         except Exception as error:
             cmds.warning(str(error))
             self.status_label.setText(u"生成失败：{}".format(error))
