@@ -106,10 +106,9 @@ class PoseDriverTool(MayaQWidgetBaseMixin, QtWidgets.QDialog):
             self.status_label.setText(u"连接失败：{}".format(error))
             return
 
-        message = u"已连接 {} 个属性到 BS".format(connected)
-
-        if missing:
-            message += u"，{} 个没匹配到 target".format(len(missing))
+        message = u"已连接 {} 个属性到 BS（没有同名 target 的已跳过）".format(
+            connected
+        )
 
         self.status_label.setText(message)
 
