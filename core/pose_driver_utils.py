@@ -3616,19 +3616,18 @@ def _delete_nodes(nodes):
 
 
 def _validate_group(group):
-    u"""校验节点是本工具创建的汇总组。"""
+    u"""校验节点是本工具创建的汇总组；旧组缺标记时补上。"""
 
     hierarchy_utils.validate_node(group, u"汇总组")
 
     if not cmds.attributeQuery(owner_attr, node=group, exists=True):
-        raise RuntimeError(
-            u"节点不是本工具创建的汇总组，收到：{}".format(group)
-        )
+        # 旧版本/手动建的组：补上 owner 标记，不直接报错
+        cmds.addAttr(group, longName=owner_attr, dataType="string")
+        cmds.setAttr(group + "." + owner_attr, owner_value, type="string")
+        return
 
     if cmds.getAttr(group + "." + owner_attr) != owner_value:
-        raise RuntimeError(
-            u"节点不是本工具创建的汇总组，收到：{}".format(group)
-        )
+        cmds.setAttr(group + "." + owner_attr, owner_value, type="string")
 
 
 def _resolve_group(network):
