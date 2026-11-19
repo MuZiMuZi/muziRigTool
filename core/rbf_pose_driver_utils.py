@@ -562,7 +562,28 @@ def build_rbf_part(item):
             for source in sources:
                 cmds.disconnectAttr(source, target)
 
-            cmds.connectAttr(plug, target)
+            # RBF 输出 → driven key 曲线 → 属性：
+            # 曲线留给绑定师调过渡/幅度
+            cmds.setDrivenKeyframe(
+                target, currentDriver=plug, driverValue=0.0, value=0.0
+            )
+            cmds.setDrivenKeyframe(
+                target, currentDriver=plug, driverValue=1.0, value=1.0
+            )
+
+            curves = cmds.listConnections(
+                target, source=True, destination=False, type="animCurve"
+            ) or []
+
+            for curve in curves:
+                cmds.keyTangent(
+                    curve, inTangentType="auto", outTangentType="auto"
+                )
+                renamed = cmds.rename(
+                    curve, "anim_rbf_" + attribute + "_001"
+                )
+                created_nodes.append(renamed)
+
             cmds.setAttr(target, keyable=False, channelBox=True)
 
         config[part_key] = {
