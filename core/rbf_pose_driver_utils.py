@@ -366,6 +366,121 @@ def _remove_part(group, config, part_key):
     config.pop(part_key, None)
 
 
+def _create(name, node_type, nodes):
+    u"""创建节点并登记到清理列表。"""
+
+    node = cmds.createNode(node_type, name=name)
+    nodes.append(node)
+
+    return node
+
+
+def _build_kernel(part_key, sample_index, input_plugs, center, sigma, nodes):
+    u"""单个样本的核值：exp(-0.5 * Σ((x - c) / σ)²)，用节点网络算。"""
+
+    squares = []
+
+    for dim, plug in enumerate(input_plugs):
+        delta = _create(
+            "plus_{}_k{}d{}_001".format(part_key, sample_index, dim),
+            "plusMinusAverage",
+            nodes,
+        )
+        cmds.setAttr(delta + ".operation", 2)
+        cmds.connectAttr(plug, delta + ".input1D[0]")
+        cmds.setAttr(delta + ".input1D[1]", float(center[dim]))
+
+        norm = _create(
+            "mult_{}_k{}n{}_001".format(part_key, sample_index, dim),
+            "multDoubleLinear",
+            nodes,
+        )
+        cmds.connectAttr(delta + ".output1D", norm + ".input1")
+        cmds.setAttr(norm + ".input2", 1.0 / float(sigma))
+
+        square = _create(
+            "mult_{}_k{}s{}_001".format(part_key, sample_index, dim),
+            "multDoubleLinear",
+            nodes,
+        )
+        cmds.connectAttr(norm + ".output", square + ".input1")
+        cmds.connectAttr(norm + ".output", square + ".input2")
+        squares.append(square + ".output")
+
+    total = _create(
+        "plus_{}_k{}sum_001".format(part_key, sample_index),
+        "plusMinusAverage",
+        nodes,
+    )
+
+    for dim, square in enumerate(squares):
+        cmds.connectAttr(square, total + ".input1D[{}]".format(dim))
+
+    half = _create(
+        "mult_{}_k{}half_001".format(part_key, sample_index),
+        "multDoubleLinear",
+        nodes,
+    )
+    cmds.connectAttr(total + ".output1D", half + ".input1")
+    cmds.setAttr(half + ".input2", -0.5)
+
+    power = _create(
+        "pow_{}_k{}_001".format(part_key, sample_index),
+        "multiplyDivide",
+        nodes,
+    )
+    cmds.setAttr(power + ".operation", 3)
+    cmds.setAttr(power + ".input1X", 2.718281828459045)
+    cmds.connectAttr(half + ".output", power + ".input2X")
+
+    return power + ".outputX"
+
+
+def _build_output(
+        part_key, output_index, kernels, coefficients, name, nodes
+):
+    u"""单个输出的加权和：Σ(coef × kernel)，clamp 到 0-1。"""
+
+    total = _create(
+        "plus_{}_o{}_001".format(part_key, output_index),
+        "plusMinusAverage",
+        nodes,
+    )
+
+    term_index = 0
+
+    for sample_index, kernel in enumerate(kernels):
+        coefficient = coefficients[sample_index][output_index]
+
+        if abs(coefficient) < 1e-12:
+            continue
+
+        node = _create(
+            "mult_{}_o{}c{}_001".format(
+                part_key, output_index, sample_index
+            ),
+            "multDoubleLinear",
+            nodes,
+        )
+        cmds.connectAttr(kernel, node + ".input1")
+        cmds.setAttr(node + ".input2", float(coefficient))
+        cmds.connectAttr(
+            node + ".output", total + ".input1D[{}]".format(term_index)
+        )
+        term_index += 1
+
+    clamp = _create(
+        "clamp_{}_o{}_001".format(part_key, output_index),
+        "clamp",
+        nodes,
+    )
+    cmds.setAttr(clamp + ".minR", 0.0)
+    cmds.setAttr(clamp + ".maxR", 1.0)
+    cmds.connectAttr(total + ".output1D", clamp + ".inputR")
+
+    return clamp + ".outputR"
+
+
 def build_rbf_part(item):
     u"""构建一个 RBF 部位。
 
@@ -419,87 +534,25 @@ def build_rbf_part(item):
     cmds.undoInfo(openChunk=True, chunkName="RbfPoseBuild")
 
     try:
-        expression = cmds.createNode(
-            "expression", name="expr_rbf_" + part_key + "_001"
-        )
-        created_nodes.append(expression)
-
-        input_attrs = [
-            "r{}".format(index) for index in range(len(input_plugs))
+        kernels = [
+            _build_kernel(
+                part_key, index, input_plugs, center, sigma, created_nodes
+            )
+            for index, center in enumerate(centers)
         ]
-
-        for index, attribute in enumerate(input_attrs):
-            cmds.addAttr(expression, longName=attribute, attributeType="double")
-            cmds.connectAttr(
-                input_plugs[index],
-                expression + "." + attribute,
-            )
-
-        output_attrs = {}
-
-        for suffix, _ in samples:
-            attribute = "w_" + suffix
-            cmds.addAttr(
-                expression, longName=attribute, attributeType="double"
-            )
-            output_attrs[suffix] = attribute
-
-        lines = []
-
-        for index, attribute in enumerate(input_attrs):
-            lines.append(
-                "float $x{0} = {1}.{2};".format(index, expression, attribute)
-            )
-
-        for sample_index, center in enumerate(centers):
-            terms = []
-
-            for index in range(len(input_plugs)):
-                delta = "(($x{0} - {1}) / {2})".format(
-                    index, _number(center[index]), _number(rbf_scales[0])
-                )
-                terms.append("({0} * {0})".format(delta))
-
-            lines.append(
-                "float $k{0} = exp(-0.5 * ({1}) / {2});".format(
-                    sample_index,
-                    " + ".join(terms),
-                    _number(sigma ** 2),
-                )
-            )
-
-        for output_index, output_name in enumerate(output_names):
-            terms = []
-
-            for sample_index in range(len(centers)):
-                coefficient = coefficients[sample_index][output_index]
-
-                if abs(coefficient) < 1e-12:
-                    continue
-
-                terms.append(
-                    "({0} * $k{1})".format(
-                        _number(coefficient), sample_index
-                    )
-                )
-
-            value = " + ".join(terms) if terms else "0.0"
-            suffix = samples[output_index][0]
-
-            lines.append(
-                "{0}.{1} = clamp(0.0, 1.0, {2});".format(
-                    expression, output_attrs[suffix], value
-                )
-            )
-
-        cmds.expression(expression, edit=True, string="\n".join(lines))
 
         attributes = {}
 
-        for suffix in output_attrs:
+        for output_index, output_name in enumerate(output_names):
+            suffix = samples[output_index][0]
             attribute = part_key + "_" + suffix
             _add_weight_attr(group, attribute)
             attributes[suffix] = attribute
+
+            plug = _build_output(
+                part_key, output_index, kernels, coefficients,
+                output_name, created_nodes
+            )
 
             target = group + "." + attribute
             sources = cmds.listConnections(
@@ -509,9 +562,7 @@ def build_rbf_part(item):
             for source in sources:
                 cmds.disconnectAttr(source, target)
 
-            cmds.connectAttr(
-                expression + "." + output_attrs[suffix], target
-            )
+            cmds.connectAttr(plug, target)
             cmds.setAttr(target, keyable=False, channelBox=True)
 
         config[part_key] = {
@@ -524,7 +575,7 @@ def build_rbf_part(item):
                 for suffix, values in samples
             ],
             "attributes": attributes,
-            "expression": expression,
+            "mode": "rbf_nodes",
             "nodes": list(created_nodes),
         }
 
@@ -548,7 +599,7 @@ def build_rbf_part(item):
         "part": part,
         "category": category,
         "attributes": dict(attributes),
-        "expression": expression,
+        "mode": "rbf_nodes",
         "nodes": list(created_nodes),
     }
 

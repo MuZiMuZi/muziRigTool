@@ -258,7 +258,13 @@ def check_attributes(result):
         type="expression",
     ) or []
 
-    assert curves or expressions, u"属性没有驱动（曲线或 RBF 表达式）"
+    drivers = cmds.listConnections(
+        group + ".lf_shoulder_U90",
+        source=True,
+        destination=False,
+    ) or []
+
+    assert curves or expressions or drivers, u"属性没有驱动"
 
     if curves:
         key_values = cmds.keyframe(curves[0], query=True, valueChange=True) or []
