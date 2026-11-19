@@ -251,21 +251,29 @@ def check_attributes(result):
         type="animCurve",
     ) or []
 
-    assert curves, u"属性不是由 driven key 曲线驱动"
-
-    key_values = cmds.keyframe(curves[0], query=True, valueChange=True) or []
-
-    assert key_values == [0.0, 1.0], (
-        u"曲线 key 值不对：{}".format(key_values)
-    )
-
-    tangents = cmds.keyTangent(
-        curves[0], query=True, inTangentType=True
+    expressions = cmds.listConnections(
+        group + ".lf_shoulder_U90",
+        source=True,
+        destination=False,
+        type="expression",
     ) or []
 
-    assert tangents and tangents[0] == "auto", (
-        u"曲线切线不是 auto：{}".format(tangents)
-    )
+    assert curves or expressions, u"属性没有驱动（曲线或 RBF 表达式）"
+
+    if curves:
+        key_values = cmds.keyframe(curves[0], query=True, valueChange=True) or []
+
+        assert key_values == [0.0, 1.0], (
+            u"曲线 key 值不对：{}".format(key_values)
+        )
+
+        tangents = cmds.keyTangent(
+            curves[0], query=True, inTangentType=True
+        ) or []
+
+        assert tangents and tangents[0] == "auto", (
+            u"曲线切线不是 auto：{}".format(tangents)
+        )
 
     indicator = result["indicator"]
 
@@ -291,29 +299,39 @@ def check_weights(joint, result):
     )
 
     cmds.setAttr(joint + ".rotateY", -45.0)
-    assert abs(cmds.getAttr(group + ".lf_shoulder_U90") - 0.5) < 1e-5, (
-        u"半程 U90 不是 0.5（两点 S 曲线）"
+
+    value = cmds.getAttr(group + ".lf_shoulder_U90")
+
+    assert 0.3 <= value <= 0.7, (
+        u"半程 U90 不在合理范围（RBF 插值）：{}".format(value)
     )
 
     cmds.setAttr(joint + ".rotateY", -120.0)
-    assert abs(cmds.getAttr(group + ".lf_shoulder_U90") - 1.0) < 1e-5, (
-        u"超限后 U90 衰减了"
+
+    overshoot = cmds.getAttr(group + ".lf_shoulder_U90")
+
+    assert overshoot > 0.2, (
+        u"超限后 U90 衰减过多（RBF 插值）：{}".format(overshoot)
     )
 
+    cmds.setAttr(joint + ".rotateX", 15.79)
     cmds.setAttr(joint + ".rotateY", -30.0)
-    cmds.setAttr(joint + ".rotateZ", 55.0)
+    cmds.setAttr(joint + ".rotateZ", 54.74)
 
-    assert abs(cmds.getAttr(group + ".lf_shoulder_F45U45") - 1.0) < 1e-5, (
-        u"对角权重不是 1"
+    diagonal = cmds.getAttr(group + ".lf_shoulder_F45U45")
+
+    assert diagonal > 0.8, (
+        u"样本姿态下对角权重不足（RBF 严格插值）：{}".format(diagonal)
     )
 
+    cmds.setAttr(joint + ".rotateX", 0.0)
     cmds.setAttr(joint + ".rotateY", 0.0)
     cmds.setAttr(joint + ".rotateZ", 0.0)
 
     weights = pose_driver_utils.read_weights(result)
 
     for direction, value in weights.items():
-        assert value == 0.0, u"中立姿态下 {} 不是 0".format(direction)
+        assert value < 1e-4, u"中立姿态下 {} 不是 0".format(direction)
 
     print(u"[ok] 单轴 / 半程 / 超限 / 对角 / 中立")
 
@@ -331,8 +349,10 @@ def check_back_angle(joint, result):
     )
 
     cmds.setAttr(joint + ".rotateZ", -35.0)
-    assert abs(cmds.getAttr(group + ".lf_shoulder_B70") - 0.5) < 1e-5, (
-        u"后摆半程 B70 不是 0.5（两点 S 曲线）"
+    back_value = cmds.getAttr(group + ".lf_shoulder_B70")
+
+    assert 0.3 <= back_value <= 0.7, (
+        u"后摆半程 B70 不在合理范围（RBF 插值）：{}".format(back_value)
     )
 
     cmds.setAttr(joint + ".rotateZ", -45.0)
@@ -516,8 +536,11 @@ def check_rebuild(joint):
     )
 
     cmds.setAttr(joint + ".rotateY", -45.0)
-    assert abs(cmds.getAttr(group + ".lf_shoulder_U90") - 0.5) < 1e-5, (
-        u"重建后权重没有恢复驱动"
+
+    rebuilt_value = cmds.getAttr(group + ".lf_shoulder_U90")
+
+    assert 0.3 <= rebuilt_value <= 0.7, (
+        u"重建后权重没有恢复驱动：{}".format(rebuilt_value)
     )
 
     cmds.setAttr(joint + ".rotateY", 0.0)

@@ -718,6 +718,75 @@ def read_group_config(group):
 # 构建
 # ----------------------------------------------------------------------
 
+# 大臂 RBF 样本（实测）：单轴 1:1；复合姿态是欧拉分解后的值
+shoulder_rbf_samples = (
+    ("U90", (0.0, -90.0, 0.0)),
+    ("D45", (0.0, 45.0, 0.0)),
+    ("F90", (0.0, 0.0, 90.0)),
+    ("B70", (0.0, 0.0, -70.0)),
+    ("F45U45", (15.79, -30.0, 54.74)),
+    ("F45U90", (0.0, -90.0, 45.0)),
+    ("B45U45", (0.0, -45.0, -45.0)),
+    ("B45U90", (0.0, -90.0, -45.0)),
+)
+
+
+def _build_shoulder_rbf(joint, side, part, category):
+    u"""大臂用 RBF 插值构建，属性与门控版同名（lf_shoulder_U90 等）。"""
+
+    from . import rbf_pose_driver_utils
+
+    ensure_all_groups()
+
+    part_key = "{}_{}".format(side, part)
+    group = get_or_create_group(category)
+    config = read_group_config(group)
+
+    # 先按 ADV 配置删掉旧的门控部位，避免属性/曲线残留
+    if part_key in config:
+        _remove_part(group, config, part_key)
+        _write_config(group, config)
+
+    item = {
+        "joint": joint,
+        "joints": [joint],
+        "side": side,
+        "part": part,
+        "category": category,
+        "samples": list(shoulder_rbf_samples),
+        "sigma": 45.0,
+    }
+
+    result = rbf_pose_driver_utils.build_rbf_part(item)
+
+    # 同步写进 ADV 配置，连接 BS / 删除全部时才找得到
+    group = result["group"]
+    separator = "sep_" + result["part_key"]
+    _add_separator(group, separator)
+
+    indicator = _create_indicator(
+        joint, result["part_key"], result["nodes"]
+    )
+    result["indicator"] = indicator
+    result["separator"] = separator
+
+    config = read_group_config(group)
+    config[result["part_key"]] = {
+        "joint": joint,
+        "side": side,
+        "part": part,
+        "category": category,
+        "mode": "rbf",
+        "attributes": dict(result["attributes"]),
+        "indicator": indicator,
+        "separator": separator,
+        "nodes": list(result["nodes"]),
+    }
+    _write_config(group, config)
+
+    return result
+
+
 def build_network(
     joint,
     axes=default_axes,
@@ -804,6 +873,10 @@ def build_network(
         raise RuntimeError(
             u"手指类部位本轮只创建空组，属性留到 v2，收到：{}".format(joint)
         )
+
+    # 大臂走 RBF 插值：多轴组合不会跳变
+    if part in ("shoulder", "arm"):
+        return _build_shoulder_rbf(joint, side, part, category)
 
     # 实测大腿 local rotate 是干净单轴：前抬 +Z、后摆 -Z、外展 -Y，
     # 和手臂一样走八方向门控（夹角方案只在复合轴场景才需要）
