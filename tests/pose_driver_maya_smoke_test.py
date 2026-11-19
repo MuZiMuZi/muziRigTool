@@ -225,7 +225,7 @@ def check_attributes(result):
 
     assert group == "grp_md_arm_pose_001", u"归类错误：{}".format(group)
 
-    for attribute in ("lf_shoulder_U90", "lf_shoulder_F45U45"):
+    for attribute in ("lf_shoulder_U90", "lf_shoulder_F45U90"):
         assert cmds.attributeQuery(attribute, node=group, exists=True), (
             u"缺少方向属性：{}".format(attribute)
         )
@@ -320,11 +320,11 @@ def check_weights(joint, result):
         u"超限后 U90 衰减过多（RBF 插值）：{}".format(overshoot)
     )
 
-    cmds.setAttr(joint + ".rotateX", 15.79)
-    cmds.setAttr(joint + ".rotateY", -30.0)
-    cmds.setAttr(joint + ".rotateZ", 54.74)
+    cmds.setAttr(joint + ".rotateX", 45.0)
+    cmds.setAttr(joint + ".rotateY", -45.0)
+    cmds.setAttr(joint + ".rotateZ", 90.0)
 
-    diagonal = cmds.getAttr(group + ".lf_shoulder_F45U45")
+    diagonal = cmds.getAttr(group + ".lf_shoulder_F45U90")
 
     assert diagonal > 0.8, (
         u"样本姿态下对角权重不足（RBF 严格插值）：{}".format(diagonal)
@@ -806,18 +806,18 @@ def check_build_all(joints):
     assert "lf_hip" in leg_parts, u"leg 组缺少左大腿"
     assert "lf_ankle" in leg_parts, u"leg 组缺少左踝"
 
-    # 大臂：单轴四方向 + 向上四对角，含 F45U90 / B45U90
+    # 大臂：单轴四方向 + F45U90 / B45U90 两个对角
     arm_group = "grp_md_arm_pose_001"
 
     for suffix in (
             "U90", "D45", "F90", "B70",
-            "F45U90", "F45U45", "B45U45", "B45U90",
+            "F45U90", "B45U90",
     ):
         assert cmds.attributeQuery(
             "lf_shoulder_" + suffix, node=arm_group, exists=True
         ), u"大臂缺少属性：{}".format(suffix)
 
-    for suffix in ("F45D45", "B45D45"):
+    for suffix in ("F45D45", "B45D45", "F45U45", "B45U45"):
         assert not cmds.attributeQuery(
             "lf_shoulder_" + suffix, node=arm_group, exists=True
         ), u"大臂不该有：{}".format(suffix)
