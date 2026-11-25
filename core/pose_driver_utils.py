@@ -1304,20 +1304,32 @@ def _build_three_joint_angle(part_key, role, joint_a, joint_b, joint_c, nodes):
 
 
 def _build_fingers_merged(side):
-    u"""四指合并：Index / Middle / Ring / Pinky 都弯到 90 才驱动。
+    u"""四指组合合并：A=index、B=middle、C=ring、D=pinky。
 
-    属性：lf_fingers_123_F90 / rt_fingers_123_F90。
+    组合：ab / bc / cd / abc / bcd / abcd。
+    每组内所有手指第一节都弯到 90 才驱动。
     """
 
     suffix = "_L" if side == "lf" else "_R"
-    fingers = ("thumb", "index", "middle", "ring", "pinky")
     part_key = side + "_fingers"
 
-    names = [finger_defs[finger] + "1" + suffix for finger in fingers]
+    finger_names = {
+        finger: finger_defs[finger] + "1" + suffix
+        for finger in ("index", "middle", "ring", "pinky")
+    }
 
-    for name in names:
+    for name in finger_names.values():
         if not cmds.objExists(name):
             raise RuntimeError(u"缺少手指关节，收到：{}".format(name))
+
+    groups = (
+        ("ab", ("index", "middle")),
+        ("bc", ("middle", "ring")),
+        ("cd", ("ring", "pinky")),
+        ("abc", ("index", "middle", "ring")),
+        ("bcd", ("middle", "ring", "pinky")),
+        ("abcd", ("index", "middle", "ring", "pinky")),
+    )
 
     created_nodes = []
     added_attrs = []
@@ -1333,57 +1345,80 @@ def _build_fingers_merged(side):
         if part_key in config:
             _remove_part(group, config, part_key)
 
-        gates = []
+        gate_cache = {}
 
-        for finger, name in zip(fingers, names):
-            plug = name + ".rotateY"
+        def get_gate(finger):
+            if finger in gate_cache:
+                return gate_cache[finger]
+
+            plug = finger_names[finger] + ".rotateY"
             neutral_value = float(cmds.getAttr(plug))
 
-            gates.append(
-                _build_gate_between(
-                    part_key,
-                    "g" + finger,
-                    plug,
-                    neutral_value,
-                    finger_angle,
-                    created_nodes,
-                )
+            gate = _build_gate_between(
+                part_key,
+                "g" + finger,
+                plug,
+                neutral_value,
+                finger_angle,
+                created_nodes,
             )
+            gate_cache[finger] = gate
 
-        value = gates[0]
-
-        for index, gate in enumerate(gates[1:], 1):
-            value = _build_multiply(
-                part_key, "m" + str(index), value, gate, created_nodes
-            )
+            return gate
 
         separator = "sep_" + part_key
         _add_separator(group, separator)
         added_attrs.append(separator)
 
-        attribute = part_key + "_1_F90"
-        _add_weight_attr(group, attribute)
-        added_attrs.append(attribute)
+        attributes = {}
+        values = {}
 
-        indicator = _create_indicator(names[0], part_key, created_nodes)
+        for group_key, group_fingers in groups:
+            value = None
 
-        _create_driven_key(
-            group + "." + attribute,
-            value,
-            part_key,
-            "1_F90",
-            created_nodes,
+            for index, finger in enumerate(group_fingers):
+                gate = get_gate(finger)
+
+                if value is None:
+                    value = gate
+                else:
+                    value = _build_multiply(
+                        part_key,
+                        group_key + "m" + str(index),
+                        value,
+                        gate,
+                        created_nodes,
+                    )
+
+            suffix_key = group_key + "_1_F90"
+            attribute = part_key + "_" + suffix_key
+            _add_weight_attr(group, attribute)
+            added_attrs.append(attribute)
+            attributes[suffix_key] = attribute
+            values[suffix_key] = value
+
+        indicator = _create_indicator(
+            finger_names["index"], part_key, created_nodes
         )
 
+        for suffix_key, value in values.items():
+            _create_driven_key(
+                group + "." + attributes[suffix_key],
+                value,
+                part_key,
+                suffix_key,
+                created_nodes,
+            )
+
         config[part_key] = {
-            "joint": names[0],
+            "joint": finger_names["index"],
             "side": side,
             "part": "fingers",
             "category": "finger",
             "mode": "fingers_merged",
-            "fingers": list(fingers),
+            "groups": [key for key, _ in groups],
             "separator": separator,
-            "attributes": {"1_F90": attribute},
+            "attributes": attributes,
             "indicator": indicator,
             "nodes": list(created_nodes),
         }
@@ -1411,12 +1446,12 @@ def _build_fingers_merged(side):
     return {
         "group": group,
         "part_key": part_key,
-        "joint": names[0],
+        "joint": finger_names["index"],
         "side": side,
         "part": "fingers",
         "category": "finger",
         "mode": "fingers_merged",
-        "attributes": {"1_F90": attribute},
+        "attributes": attributes,
         "separator": separator,
         "indicator": indicator,
         "nodes": list(created_nodes),
@@ -2790,11 +2825,11 @@ def find_supported_joints():
             "category": "leg",
         })
 
-    # 四指合并（不含拇指）：四根手指的 Finger1 都在才支持
+    # 四指组合合并（不含拇指）：四根手指的 Finger1 都在才支持
     for suffix, side in (("_L", "lf"), ("_R", "rt")):
         merged = [
             finger_defs[finger] + "1" + suffix
-            for finger in ("thumb", "index", "middle", "ring", "pinky")
+            for finger in ("index", "middle", "ring", "pinky")
         ]
 
         if all(cmds.objExists(name) for name in merged):
