@@ -1539,26 +1539,57 @@ def _build_finger(joint, side, finger):
             "123": gate_123,
         }
 
+        # 拇指第一节额外两个方向：U30（rotateY 负向）、B70（rotateZ 正向）
+        if finger == "thumb":
+            thumb = names[0]
+            neutral_y = float(cmds.getAttr(thumb + ".rotateY"))
+            neutral_z = float(cmds.getAttr(thumb + ".rotateZ"))
+
+            delta_y = _build_channel_delta(
+                part_key, "ry", thumb + ".rotateY", neutral_y, created_nodes
+            )
+            delta_z = _build_channel_delta(
+                part_key, "rz", thumb + ".rotateZ", neutral_z, created_nodes
+            )
+
+            values["1_U30"] = _build_gate(
+                part_key, "u30", delta_y, -1, 30.0, created_nodes
+            )
+            values["1_B70"] = _build_gate(
+                part_key, "b70", delta_z, 1, 70.0, created_nodes
+            )
+
         separator = "sep_" + part_key
         _add_separator(group, separator)
         added_attrs.append(separator)
 
         attributes = {}
 
-        for key in finger_attribute_suffixes:
-            attribute = part_key + key + "_F90"
+        for key in values:
+            if key in finger_attribute_suffixes:
+                attribute = part_key + key + "_F90"
+                suffix_key = key + "F90"
+            else:
+                attribute = part_key + key
+                suffix_key = key
+
             _add_weight_attr(group, attribute)
             added_attrs.append(attribute)
             attributes[key] = attribute
 
         indicator = _create_indicator(names[0], part_key, created_nodes)
 
-        for key in finger_attribute_suffixes:
+        for key, value in values.items():
+            if key in finger_attribute_suffixes:
+                suffix_key = key + "F90"
+            else:
+                suffix_key = key
+
             _create_driven_key(
                 group + "." + attributes[key],
-                values[key],
+                value,
                 part_key,
-                key + "F90",
+                suffix_key,
                 created_nodes,
             )
 
