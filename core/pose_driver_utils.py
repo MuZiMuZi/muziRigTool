@@ -814,6 +814,9 @@ def build_network(
         ValueError: 轴对、阈值或方向非法。
     """
 
+    if joint.startswith("md_fingers_"):
+        return _build_fingers_merged(joint[len("md_fingers_"):])
+
     if joint == "md_legs":
         return _build_legs()
 
@@ -1298,6 +1301,126 @@ def _build_three_joint_angle(part_key, role, joint_a, joint_b, joint_c, nodes):
     cmds.setAttr(delta + ".input1D[1]", neutral_angle)
 
     return delta + ".output1D", neutral_angle
+
+
+def _build_fingers_merged(side):
+    u"""四指合并：Index / Middle / Ring / Pinky 都弯到 90 才驱动。
+
+    属性：lf_fingers_123_F90 / rt_fingers_123_F90。
+    """
+
+    suffix = "_L" if side == "lf" else "_R"
+    fingers = ("index", "middle", "ring", "pinky")
+    part_key = side + "_fingers"
+
+    names = [finger_defs[finger] + "1" + suffix for finger in fingers]
+
+    for name in names:
+        if not cmds.objExists(name):
+            raise RuntimeError(u"缺少手指关节，收到：{}".format(name))
+
+    created_nodes = []
+    added_attrs = []
+    group = None
+
+    cmds.undoInfo(openChunk=True, chunkName="PoseDriverBuild")
+
+    try:
+        ensure_all_groups()
+        group = get_or_create_group("finger")
+        config = read_group_config(group)
+
+        if part_key in config:
+            _remove_part(group, config, part_key)
+
+        gates = []
+
+        for finger, name in zip(fingers, names):
+            plug = name + ".rotateY"
+            neutral_value = float(cmds.getAttr(plug))
+
+            gates.append(
+                _build_gate_between(
+                    part_key,
+                    "g" + finger,
+                    plug,
+                    neutral_value,
+                    finger_angle,
+                    created_nodes,
+                )
+            )
+
+        value = gates[0]
+
+        for index, gate in enumerate(gates[1:], 1):
+            value = _build_multiply(
+                part_key, "m" + str(index), value, gate, created_nodes
+            )
+
+        separator = "sep_" + part_key
+        _add_separator(group, separator)
+        added_attrs.append(separator)
+
+        attribute = part_key + "_1_F90"
+        _add_weight_attr(group, attribute)
+        added_attrs.append(attribute)
+
+        indicator = _create_indicator(names[0], part_key, created_nodes)
+
+        _create_driven_key(
+            group + "." + attribute,
+            value,
+            part_key,
+            "1_F90",
+            created_nodes,
+        )
+
+        config[part_key] = {
+            "joint": names[0],
+            "side": side,
+            "part": "fingers",
+            "category": "finger",
+            "mode": "fingers_merged",
+            "fingers": list(fingers),
+            "separator": separator,
+            "attributes": {"1_F90": attribute},
+            "indicator": indicator,
+            "nodes": list(created_nodes),
+        }
+
+        _write_config(group, config)
+
+    except Exception:
+        for name in added_attrs:
+            if group and cmds.attributeQuery(name, node=group, exists=True):
+                try:
+                    cmds.setAttr(group + "." + name, lock=False)
+                except RuntimeError:
+                    pass
+
+                cmds.deleteAttr(group + "." + name)
+
+        _delete_nodes(created_nodes)
+        raise
+
+    finally:
+        cmds.undoInfo(closeChunk=True)
+
+    cmds.select(group, replace=True)
+
+    return {
+        "group": group,
+        "part_key": part_key,
+        "joint": names[0],
+        "side": side,
+        "part": "fingers",
+        "category": "finger",
+        "mode": "fingers_merged",
+        "attributes": {"1_F90": attribute},
+        "separator": separator,
+        "indicator": indicator,
+        "nodes": list(created_nodes),
+    }
 
 
 def _build_finger(joint, side, finger):
@@ -2666,6 +2789,22 @@ def find_supported_joints():
             "part": "legs",
             "category": "leg",
         })
+
+    # 四指合并（不含拇指）：四根手指的 Finger1 都在才支持
+    for suffix, side in (("_L", "lf"), ("_R", "rt")):
+        merged = [
+            finger_defs[finger] + "1" + suffix
+            for finger in ("index", "middle", "ring", "pinky")
+        ]
+
+        if all(cmds.objExists(name) for name in merged):
+            found.append({
+                "joint": "md_fingers_" + side,
+                "short": "md_fingers_" + side,
+                "side": side,
+                "part": "fingers",
+                "category": "finger",
+            })
 
     for finger, base in finger_defs.items():
         for suffix, side in (("_L", "lf"), ("_R", "rt")):
