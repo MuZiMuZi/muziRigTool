@@ -1323,13 +1323,13 @@ def _build_fingers_merged(side):
             raise RuntimeError(u"缺少手指关节，收到：{}".format(name))
 
     groups = (
-        ("index_middle", ("index", "middle")),
-        ("middle_ring", ("middle", "ring")),
-        ("ring_pinky", ("ring", "pinky")),
-        ("index_middle_ring", ("index", "middle", "ring")),
-        ("middle_ring_pinky", ("middle", "ring", "pinky")),
+        ("IndexMiddle", ("index", "middle")),
+        ("MiddleRing", ("middle", "ring")),
+        ("RingPinky", ("ring", "pinky")),
+        ("IndexMiddleRing", ("index", "middle", "ring")),
+        ("MiddleRingPinky", ("middle", "ring", "pinky")),
         (
-            "index_middle_ring_pinky",
+            "IndexMiddleRingPinky",
             ("index", "middle", "ring", "pinky"),
         ),
     )
@@ -1393,8 +1393,8 @@ def _build_fingers_merged(side):
                         created_nodes,
                     )
 
-            suffix_key = group_key + "_1_F90"
-            attribute = part_key + "_" + suffix_key
+            suffix_key = group_key + "_001_F90"
+            attribute = part_key + group_key + "_001_F90"
             _add_weight_attr(group, attribute)
             added_attrs.append(attribute)
             attributes[suffix_key] = attribute
