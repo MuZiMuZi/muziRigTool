@@ -1310,7 +1310,7 @@ def _build_fingers_merged(side):
     """
 
     suffix = "_L" if side == "lf" else "_R"
-    fingers = ("index", "middle", "ring", "pinky")
+    fingers = ("thumb", "index", "middle", "ring", "pinky")
     part_key = side + "_fingers"
 
     names = [finger_defs[finger] + "1" + suffix for finger in fingers]
@@ -2794,7 +2794,7 @@ def find_supported_joints():
     for suffix, side in (("_L", "lf"), ("_R", "rt")):
         merged = [
             finger_defs[finger] + "1" + suffix
-            for finger in ("index", "middle", "ring", "pinky")
+            for finger in ("thumb", "index", "middle", "ring", "pinky")
         ]
 
         if all(cmds.objExists(name) for name in merged):
