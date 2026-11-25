@@ -1323,12 +1323,15 @@ def _build_fingers_merged(side):
             raise RuntimeError(u"缺少手指关节，收到：{}".format(name))
 
     groups = (
-        ("ab", ("index", "middle")),
-        ("bc", ("middle", "ring")),
-        ("cd", ("ring", "pinky")),
-        ("abc", ("index", "middle", "ring")),
-        ("bcd", ("middle", "ring", "pinky")),
-        ("abcd", ("index", "middle", "ring", "pinky")),
+        ("index_middle", ("index", "middle")),
+        ("middle_ring", ("middle", "ring")),
+        ("ring_pinky", ("ring", "pinky")),
+        ("index_middle_ring", ("index", "middle", "ring")),
+        ("middle_ring_pinky", ("middle", "ring", "pinky")),
+        (
+            "index_middle_ring_pinky",
+            ("index", "middle", "ring", "pinky"),
+        ),
     )
 
     created_nodes = []
